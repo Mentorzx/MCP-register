@@ -21,3 +21,24 @@ class SearchResult:
 
     user: User
     score: float
+
+
+@dataclass(slots=True, frozen=True)
+class UserResponse:
+    """Structured response returned by user-facing MCP operations."""
+
+    id: int
+    name: str
+    email: str
+    description: str
+
+
+@dataclass(slots=True, frozen=True)
+class SearchUserResponse:
+    """Structured response returned by semantic search operations."""
+
+    id: int
+    name: str
+    email: str
+    description: str
+    score: float

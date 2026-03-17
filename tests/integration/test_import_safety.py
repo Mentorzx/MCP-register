@@ -6,11 +6,19 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml  # type: ignore[import-untyped]
+
 
 def test_importing_mcp_server_has_no_runtime_side_effects(tmp_path: Path):
     runtime_dir = tmp_path / "runtime"
-    db_path = runtime_dir / "users.db"
-    faiss_path = runtime_dir / "users.faiss"
+    config_path = (
+        Path(__file__).resolve().parents[2] / "config" / "config.yaml"
+    )
+    with config_path.open("r", encoding="utf-8") as stream:
+        config = yaml.safe_load(stream)
+
+    db_path = runtime_dir / config["runtime"]["db_filename"]
+    faiss_path = runtime_dir / config["runtime"]["faiss_filename"]
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
     env["MCP_DB_PATH"] = str(db_path)
@@ -45,7 +53,7 @@ print(json.dumps(payload))
     payload = json.loads(completed.stdout.strip())
 
     assert payload == {
-        "module": "mcp-crm",
+        "module": config["app"]["name"],
         "db_exists": False,
         "faiss_exists": False,
         "handlers_before": 0,

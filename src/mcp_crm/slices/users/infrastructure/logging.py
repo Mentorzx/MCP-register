@@ -7,6 +7,8 @@ import logging
 import os
 from datetime import UTC, datetime
 
+from mcp_crm.slices.users.infrastructure.config import get_project_config
+
 _STANDARD_RECORD_FIELDS = {
     "args",
     "asctime",
@@ -64,8 +66,13 @@ def configure_logging() -> None:
     if root_logger.handlers:
         return
 
+    project_config = get_project_config()
     handler = logging.StreamHandler()
-    if os.getenv("MCP_LOG_FORMAT", "json").lower() == "json":
+    log_format = os.getenv(
+        "MCP_LOG_FORMAT",
+        project_config.logging.default_format,
+    ).lower()
+    if log_format == "json":
         handler.setFormatter(JsonFormatter())
     else:
         handler.setFormatter(

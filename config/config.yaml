@@ -1,0 +1,30 @@
+app:
+  name: mcp-crm
+  version: 0.1.0
+  instructions: >-
+    Manage CRM users with persistent storage and semantic search over local
+    embeddings.
+
+runtime:
+  data_dir: data/runtime
+  db_filename: users.db
+  faiss_filename: users.faiss
+  sqlite_timeout_seconds: 30
+
+embedding:
+  model: sentence-transformers/all-MiniLM-L6-v2
+
+search:
+  default_top_k: 5
+  max_top_k: 100
+
+pagination:
+  default_limit: 20
+  max_limit: 100
+
+testing:
+  deterministic_embedding_dimensions: 16
+  docker_image: mcp-crm:latest
+
+logging:
+  default_format: json

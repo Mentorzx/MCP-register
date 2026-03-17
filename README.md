@@ -45,7 +45,7 @@ Exemplo em Nushell:
 ```nu
 cd /home/lira/Projetos/MCP
 uv sync --extra dev
-uv run pytest testes -q
+uv run pytest tests -q
 uv run python -m mcp_crm.drivers.mcp_server
 ```
 
@@ -53,7 +53,7 @@ Exemplo equivalente usando o executavel do venv:
 
 ```bash
 cd /home/lira/Projetos/MCP
-./.venv/bin/python -m pytest testes -q
+./.venv/bin/python -m pytest tests -q
 ./.venv/bin/python -m mcp_crm.drivers.mcp_server
 ```
 
@@ -91,7 +91,7 @@ O container tambem usa um venv interno em /opt/venv, mantendo o mesmo principio 
 
 Para manter a imagem alinhada com CPU-only, o build instala torch pela wheel index de CPU do PyTorch antes de instalar o projeto.
 
-## Testes
+## Tests
 
 Suite atual:
 
@@ -104,7 +104,7 @@ Execucao padrao no venv:
 
 ```bash
 cd /home/lira/Projetos/MCP
-./.venv/bin/python -m pytest testes -q
+./.venv/bin/python -m pytest tests -q
 ./.venv/bin/python -m ruff check .
 ```
 
@@ -113,7 +113,7 @@ Smoke test Docker:
 ```bash
 cd /home/lira/Projetos/MCP
 docker build -t mcp-crm .
-RUN_DOCKER_SMOKE=1 ./.venv/bin/python -m pytest testes/smoke -m smoke -q
+RUN_DOCKER_SMOKE=1 ./.venv/bin/python -m pytest tests/smoke -m smoke -q
 ```
 
 No Nushell, use `;` entre comandos em vez de `&&`.
@@ -248,7 +248,7 @@ Validacao isolada:
 
 ```bash
 cd /home/lira/Projetos/MCP
-./.venv/bin/python -m pytest testes/integration/test_import_safety.py -q
+./.venv/bin/python -m pytest tests/integration/test_import_safety.py -q
 ```
 
 ## Performance

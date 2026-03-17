@@ -133,7 +133,7 @@ Não obrigatórios:
 - Endpoint para listar usuários
 - Validação de email
 - Dockerfile
-- Testes automatizados
+- Tests automatizados
 - Logging estruturado
 
 ### Critérios de avaliação
