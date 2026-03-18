@@ -124,6 +124,43 @@ docker run --rm -it -v $"(pwd)/data/runtime:/app/data/runtime" mcp-crm bash
 
 Para manter a imagem alinhada com CPU-only, o build instala torch pela wheel index de CPU do PyTorch antes de instalar o projeto.
 
+## Reset total sem apagar o repositorio
+
+Os comandos abaixo limpam apenas os artefatos locais de execucao para simular um ambiente do zero:
+
+- imagem Docker `mcp-crm`
+- cache de build do Docker
+- banco SQLite e indice FAISS em `data/runtime`
+
+Eles nao apagam arquivos do repositório clonado.
+
+Reset em Bash:
+
+```bash
+docker rm -f mcp-crm-run 2>/dev/null || true
+docker rmi -f mcp-crm 2>/dev/null || true
+docker builder prune -af
+rm -rf data/runtime
+mkdir -p data/runtime
+docker build --no-cache -t mcp-crm .
+docker run --rm -it \
+  -v "$(pwd)/data/runtime:/app/data/runtime" \
+  mcp-crm \
+  python docs/client_example.py
+```
+
+Reset em Nushell:
+
+```nu
+do { docker rm -f mcp-crm-run | ignore }
+do { docker rmi -f mcp-crm | ignore }
+docker builder prune -af
+rm -rf data/runtime
+mkdir data/runtime
+docker build --no-cache -t mcp-crm .
+docker run --rm -it -v $"(pwd)/data/runtime:/app/data/runtime" mcp-crm python docs/client_example.py
+```
+
 ## Tests
 
 Suite atual:
@@ -166,6 +203,12 @@ docker run --rm -it -e RUN_DOCKER_SMOKE=1 mcp-crm python -m pytest tests/smoke -
 Se voce tiver apenas Docker, isso ja e suficiente para o fluxo documentado neste README.
 
 ## Exemplos MCP
+
+Os exemplos abaixo exercitam as tools pedidas em [docs/case.md](docs/case.md):
+
+- `create_user`
+- `search_users`
+- `get_user`
 
 Exemplo real com cliente FastMCP em processo, sem mocks:
 
@@ -211,6 +254,25 @@ docker run --rm -it \
 ```
 
 Execucao em Nushell:
+
+```nu
+docker run --rm -it -v $"(pwd)/data/runtime:/app/data/runtime" mcp-crm python docs/client_example.py
+```
+
+### Usando as tools do case via Docker
+
+As tres tools obrigatorias do case (`create_user`, `get_user` e `search_users`) sao exercitadas pelo script `docs/client_example.py`.
+
+Executar as tres tools obrigatorias em Bash:
+
+```bash
+docker run --rm -it \
+  -v "$(pwd)/data/runtime:/app/data/runtime" \
+  mcp-crm \
+  python docs/client_example.py
+```
+
+Executar as tres tools obrigatorias em Nushell:
 
 ```nu
 docker run --rm -it -v $"(pwd)/data/runtime:/app/data/runtime" mcp-crm python docs/client_example.py
