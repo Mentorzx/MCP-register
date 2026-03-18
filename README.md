@@ -36,25 +36,27 @@ O projeto segue monolito modular orientado a fatias.
 
 ## Ambiente local
 
-Este projeto usa venv local em .venv dentro de MCP.
+Este projeto foi documentado para uso via Docker, executando os comandos a partir da raiz do repositorio clonado.
 
-O fluxo padrao de desenvolvimento deve sempre usar o ambiente virtual local ou a imagem Docker do projeto. Nao execute os comandos com o Python global.
+Isso evita depender de Python global, `.venv` local ou de um nome fixo para a pasta onde o projeto foi clonado.
 
-Exemplo em Nushell:
+Fluxo base:
 
-```nu
-cd /home/lira/Projetos/MCP
-uv sync --extra dev
-uv run pytest tests -q
-uv run python -m mcp_crm.drivers.mcp_server
-```
+- build da imagem com `docker build`
+- execucao do servidor com `docker run`
+- execucao de scripts Python com `docker run ... python ...`
+- execucao de testes e lint, quando existirem, com `docker run ... python -m ...`
 
-Exemplo equivalente usando o executavel do venv:
+Build em Bash:
 
 ```bash
-cd /home/lira/Projetos/MCP
-./.venv/bin/python -m pytest tests -q
-./.venv/bin/python -m mcp_crm.drivers.mcp_server
+docker build -t mcp-crm .
+```
+
+Build em Nushell:
+
+```nu
+docker build -t mcp-crm .
 ```
 
 ## Persistencia
@@ -71,23 +73,54 @@ cd /home/lira/Projetos/MCP
 
 ## Docker
 
-Build:
+O Docker ja contem um ambiente Python isolado proprio dentro da imagem, em `/opt/venv`. Isso significa que o container nao depende de `.venv` local para subir ou executar scripts dentro do container.
+
+Em outras palavras:
+
+- para executar o servidor via container, o Docker faz tudo sozinho
+- para executar scripts Python sem instalar Python no host, rode esses scripts dentro do container
+- voce nao e obrigado a criar `.venv` se for usar o fluxo documentado aqui
+
+Build em Bash:
 
 ```bash
-cd /home/lira/Projetos/MCP
 docker build -t mcp-crm .
 ```
 
-Execucao com persistencia local dos dados:
+Build em Nushell:
+
+```nu
+docker build -t mcp-crm .
+```
+
+Execucao com persistencia local dos dados em Bash:
 
 ```bash
-cd /home/lira/Projetos/MCP
 docker run --rm \
   -v "$(pwd)/data/runtime:/app/data/runtime" \
   mcp-crm
 ```
 
-O container tambem usa um venv interno em /opt/venv, mantendo o mesmo principio de isolamento adotado no ambiente local.
+Execucao com persistencia local dos dados em Nushell:
+
+```nu
+docker run --rm -v $"(pwd)/data/runtime:/app/data/runtime" mcp-crm
+```
+
+Abrir um shell interativo no container em Bash:
+
+```bash
+docker run --rm -it \
+  -v "$(pwd)/data/runtime:/app/data/runtime" \
+  mcp-crm \
+  bash
+```
+
+Abrir um shell interativo no container em Nushell:
+
+```nu
+docker run --rm -it -v $"(pwd)/data/runtime:/app/data/runtime" mcp-crm bash
+```
 
 Para manter a imagem alinhada com CPU-only, o build instala torch pela wheel index de CPU do PyTorch antes de instalar o projeto.
 
@@ -98,25 +131,39 @@ Suite atual:
 - unitarios para validacoes e paginacao da camada de aplicacao
 - integracao para persistencia SQLite e rebuild do indice FAISS
 - integracao do driver MCP para registro e chamada das tools
-- smoke test opt-in para build e execucao Docker com persistencia real
+- smoke test opt-in para build e execucao Docker com persistencia real, quando a pasta `tests/` existir no checkout
 
-Execucao padrao no venv:
+No estado atual deste repositorio, nao existe pasta `tests/`. Portanto, os comandos abaixo so valem quando os testes estiverem presentes em um checkout futuro.
+
+Execucao de testes em Bash:
 
 ```bash
-cd /home/lira/Projetos/MCP
-./.venv/bin/python -m pytest tests -q
-./.venv/bin/python -m ruff check .
+docker run --rm -it mcp-crm python -m pytest tests -q
+docker run --rm -it mcp-crm python -m ruff check .
 ```
 
-Smoke test Docker:
+Execucao de testes em Nushell:
+
+```nu
+docker run --rm -it mcp-crm python -m pytest tests -q
+docker run --rm -it mcp-crm python -m ruff check .
+```
+
+Smoke test Docker em Bash:
 
 ```bash
-cd /home/lira/Projetos/MCP
 docker build -t mcp-crm .
-RUN_DOCKER_SMOKE=1 ./.venv/bin/python -m pytest tests/smoke -m smoke -q
+docker run --rm -it -e RUN_DOCKER_SMOKE=1 mcp-crm python -m pytest tests/smoke -m smoke -q
 ```
 
-No Nushell, use `;` entre comandos em vez de `&&`.
+Smoke test Docker em Nushell:
+
+```nu
+docker build -t mcp-crm .
+docker run --rm -it -e RUN_DOCKER_SMOKE=1 mcp-crm python -m pytest tests/smoke -m smoke -q
+```
+
+Se voce tiver apenas Docker, isso ja e suficiente para o fluxo documentado neste README.
 
 ## Exemplos MCP
 
@@ -154,11 +201,19 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Execucao:
+Execucao em Bash:
 
 ```bash
-cd /home/lira/Projetos/MCP
-./.venv/bin/python docs/client_example.py
+docker run --rm -it \
+  -v "$(pwd)/data/runtime:/app/data/runtime" \
+  mcp-crm \
+  python docs/client_example.py
+```
+
+Execucao em Nushell:
+
+```nu
+docker run --rm -it -v $"(pwd)/data/runtime:/app/data/runtime" mcp-crm python docs/client_example.py
 ```
 
 Criacao de usuario:
@@ -233,22 +288,35 @@ Listagem:
 Exemplo de duas execucoes reaproveitando o mesmo volume de dados:
 
 ```bash
-cd /home/lira/Projetos/MCP
 docker build -t mcp-crm .
 mkdir -p data/runtime
 docker run --rm -v "$(pwd)/data/runtime:/app/data/runtime" mcp-crm python -c "from mcp_crm.slices.users.infrastructure.embeddings import DeterministicTestEmbedder; from mcp_crm.slices.users.infrastructure.faiss_store import FaissStore; from mcp_crm.slices.users.infrastructure.sqlite_repository import SQLiteUserRepository; repo = SQLiteUserRepository('/app/data/runtime/users.db', FaissStore('/app/data/runtime/users.faiss', 16)); embedder = DeterministicTestEmbedder(); print(repo.create_user(name='Ana', email='ana@example.com', description='Cliente premium', embedding=embedder.embed('Cliente premium')))"
 docker run --rm -v "$(pwd)/data/runtime:/app/data/runtime" mcp-crm python -c "from mcp_crm.slices.users.infrastructure.embeddings import DeterministicTestEmbedder; from mcp_crm.slices.users.infrastructure.faiss_store import FaissStore; from mcp_crm.slices.users.infrastructure.sqlite_repository import SQLiteUserRepository; repo = SQLiteUserRepository('/app/data/runtime/users.db', FaissStore('/app/data/runtime/users.faiss', 16)); embedder = DeterministicTestEmbedder(); print(repo.search_users(embedder.embed('premium'), top_k=1)[0].user.email)"
 ```
 
+Equivalente em Nushell:
+
+```nu
+docker build -t mcp-crm .
+mkdir data/runtime
+docker run --rm -v $"(pwd)/data/runtime:/app/data/runtime" mcp-crm python -c "from mcp_crm.slices.users.infrastructure.embeddings import DeterministicTestEmbedder; from mcp_crm.slices.users.infrastructure.faiss_store import FaissStore; from mcp_crm.slices.users.infrastructure.sqlite_repository import SQLiteUserRepository; repo = SQLiteUserRepository('/app/data/runtime/users.db', FaissStore('/app/data/runtime/users.faiss', 16)); embedder = DeterministicTestEmbedder(); print(repo.create_user(name='Ana', email='ana@example.com', description='Cliente premium', embedding=embedder.embed('Cliente premium')))"
+docker run --rm -v $"(pwd)/data/runtime:/app/data/runtime" mcp-crm python -c "from mcp_crm.slices.users.infrastructure.embeddings import DeterministicTestEmbedder; from mcp_crm.slices.users.infrastructure.faiss_store import FaissStore; from mcp_crm.slices.users.infrastructure.sqlite_repository import SQLiteUserRepository; repo = SQLiteUserRepository('/app/data/runtime/users.db', FaissStore('/app/data/runtime/users.faiss', 16)); embedder = DeterministicTestEmbedder(); print(repo.search_users(embedder.embed('premium'), top_k=1)[0].user.email)"
+```
+
 ## Import seguro
 
 O projeto tem teste automatizado para garantir que importar o driver MCP nao cria arquivos de runtime nem configura logging global prematuramente.
 
-Validacao isolada:
+Validacao isolada em Bash:
 
 ```bash
-cd /home/lira/Projetos/MCP
-./.venv/bin/python -m pytest tests/integration/test_import_safety.py -q
+docker run --rm -it mcp-crm python -m pytest tests/integration/test_import_safety.py -q
+```
+
+Validacao isolada em Nushell:
+
+```nu
+docker run --rm -it mcp-crm python -m pytest tests/integration/test_import_safety.py -q
 ```
 
 ## Performance
