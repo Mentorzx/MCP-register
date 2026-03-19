@@ -67,6 +67,59 @@ Exemplos completos de chamada das tools estao em [docs/](docs/):
 
 - [docs/client_example.py](docs/client_example.py) — script exercitando `create_user`, `get_user` e `search_users` via FastMCP Client
 
+### Uso via Python
+
+Exemplo completo chamando `create_user`, `get_user`, `search_users` e `list_users` em processo:
+
+```python
+from __future__ import annotations
+
+import asyncio
+
+from fastmcp import Client
+
+from mcp_crm.drivers import mcp_server
+
+
+async def main() -> None:
+    async with Client(mcp_server.mcp) as client:
+        created = await client.call_tool(
+            "create_user",
+            {
+                "name": "Ana Silva",
+                "email": "ana@example.com",
+                "description": "Cliente premium interessada em investimentos.",
+            },
+        )
+        print("create_user ->", created.data)
+
+        found = await client.call_tool("get_user", {"user_id": created.data})
+        print("get_user ->", found.data)
+
+        results = await client.call_tool(
+            "search_users",
+            {"query": "cliente premium com foco em investimentos", "top_k": 2},
+        )
+        print("search_users ->", results.data)
+
+        page = await client.call_tool("list_users", {"limit": 10, "offset": 0})
+        print("list_users ->", page.data)
+
+
+asyncio.run(main())
+```
+
+Se preferir usar o script pronto do repositório:
+
+```python
+from docs.client_example import main
+
+import asyncio
+
+
+asyncio.run(main())
+```
+
 Executar o exemplo:
 
 ```bash
@@ -96,6 +149,12 @@ docker run --rm -v "$(pwd)/tests:/app/tests" mcp-crm python -m pytest tests -q
 ```nu
 docker build -t mcp-crm .
 docker run --rm -v $"(pwd)/tests:/app/tests" mcp-crm python -m pytest tests -q
+```
+
+Smoke E2E do fluxo Docker real:
+
+```bash
+RUN_DOCKER_SMOKE=1 pytest tests/smoke -m smoke -q
 ```
 
 Lint:
