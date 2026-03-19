@@ -83,6 +83,9 @@ from mcp_crm.drivers import mcp_server
 
 async def main() -> None:
     async with Client(mcp_server.mcp) as client:
+        # ------------------------------------------------------------
+        # 1. create_user
+        # ------------------------------------------------------------
         created = await client.call_tool(
             "create_user",
             {
@@ -93,15 +96,24 @@ async def main() -> None:
         )
         print("create_user ->", created.data)
 
+        # ------------------------------------------------------------
+        # 2. get_user
+        # ------------------------------------------------------------
         found = await client.call_tool("get_user", {"user_id": created.data})
         print("get_user ->", found.data)
 
+        # ------------------------------------------------------------
+        # 3. search_users
+        # ------------------------------------------------------------
         results = await client.call_tool(
             "search_users",
             {"query": "cliente premium com foco em investimentos", "top_k": 2},
         )
         print("search_users ->", results.data)
 
+        # ------------------------------------------------------------
+        # 4. list_users
+        # ------------------------------------------------------------
         page = await client.call_tool("list_users", {"limit": 10, "offset": 0})
         print("list_users ->", page.data)
 
