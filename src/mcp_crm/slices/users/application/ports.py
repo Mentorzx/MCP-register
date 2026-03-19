@@ -9,6 +9,10 @@ class EmbeddingPort(Protocol):
     def embed(self, text: str) -> list[float]: ...
 
 
+class LLMPort(Protocol):
+    def generate(self, *, system_prompt: str, prompt: str) -> str: ...
+
+
 class UserRepositoryPort(Protocol):
     def create_user(
         self,

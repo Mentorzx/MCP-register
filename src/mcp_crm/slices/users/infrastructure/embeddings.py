@@ -3,7 +3,8 @@ from __future__ import annotations
 import math
 
 from mcp_crm.slices.users.application.ports import EmbeddingPort
-from mcp_crm.slices.users.infrastructure.config import get_project_config
+from mcp_crm.slices.users.domain.errors import ConfigurationError
+from mcp_crm.slices.users.infrastructure.config import Settings, get_project_config
 
 
 class SentenceTransformerEmbedder(EmbeddingPort):
@@ -40,3 +41,14 @@ class DeterministicTestEmbedder(EmbeddingPort):
             buckets[i % self._dims] += float(b)
         norm = math.sqrt(sum(v * v for v in buckets)) or 1.0
         return [v / norm for v in buckets]
+
+
+def build_embedder(settings: Settings) -> EmbeddingPort:
+    provider = settings.embedding_provider.strip().lower()
+    if provider in {"sentence-transformer", "sentence-transformers", "local"}:
+        return SentenceTransformerEmbedder(settings.embedding_model)
+    if provider == "deterministic":
+        return DeterministicTestEmbedder()
+    raise ConfigurationError(
+        f"unsupported MCP_EMBEDDING_PROVIDER: {settings.embedding_provider}"
+    )

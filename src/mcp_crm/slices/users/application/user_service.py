@@ -63,7 +63,7 @@ class UserService:
         query: str,
         top_k: int = _CFG.search.default_top_k,
     ) -> list[SearchUserResponse]:
-        """Encode query and search FAISS for similar users."""
+        """Encode query and search persisted embeddings for similar users."""
         self._require_text(query, "query")
         max_top_k = _CFG.search.max_top_k
         if top_k <= 0 or top_k > max_top_k:

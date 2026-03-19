@@ -22,12 +22,12 @@ class AppConfig:
 class RuntimeConfig:
     data_dir: str
     db_filename: str
-    faiss_filename: str
     sqlite_timeout_seconds: int
 
 
 @dataclass(slots=True, frozen=True)
 class EmbeddingConfig:
+    provider: str
     model: str
 
 
@@ -55,6 +55,15 @@ class LoggingConfig:
 
 
 @dataclass(slots=True, frozen=True)
+class LLMConfig:
+    provider: str
+    model: str
+    base_url: str
+    timeout_seconds: int
+    system_prompt: str
+
+
+@dataclass(slots=True, frozen=True)
 class ProjectConfig:
     app: AppConfig
     runtime: RuntimeConfig
@@ -63,6 +72,7 @@ class ProjectConfig:
     pagination: PaginationConfig
     testing: TestingConfig
     logging: LoggingConfig
+    llm: LLMConfig
 
 
 @dataclass(slots=True, frozen=True)
@@ -70,9 +80,15 @@ class Settings:
     root_dir: Path
     data_dir: Path
     db_path: Path
-    faiss_path: Path
     sqlite_timeout_seconds: int
     embedding_model: str
+    embedding_provider: str
+    llm_provider: str
+    llm_model: str
+    llm_base_url: str
+    llm_api_key: str | None
+    llm_timeout_seconds: int
+    llm_system_prompt: str
 
 
 # -- loaders ---------------------------------------------------------------
@@ -97,6 +113,7 @@ def get_project_config() -> ProjectConfig:
         pagination=PaginationConfig(**raw["pagination"]),
         testing=TestingConfig(**raw["testing"]),
         logging=LoggingConfig(**raw["logging"]),
+        llm=LLMConfig(**raw["llm"]),
     )
 
 
@@ -110,7 +127,15 @@ def get_settings() -> Settings:
         root_dir=root,
         data_dir=data,
         db_path=Path(os.getenv("MCP_DB_PATH", data / cfg.runtime.db_filename)),
-        faiss_path=Path(os.getenv("MCP_FAISS_PATH", data / cfg.runtime.faiss_filename)),
         sqlite_timeout_seconds=cfg.runtime.sqlite_timeout_seconds,
         embedding_model=os.getenv("MCP_EMBEDDING_MODEL", cfg.embedding.model),
+        embedding_provider=os.getenv("MCP_EMBEDDING_PROVIDER", cfg.embedding.provider),
+        llm_provider=os.getenv("MCP_LLM_PROVIDER", cfg.llm.provider),
+        llm_model=os.getenv("MCP_LLM_MODEL", cfg.llm.model),
+        llm_base_url=os.getenv("MCP_LLM_BASE_URL", cfg.llm.base_url),
+        llm_api_key=os.getenv("MCP_LLM_API_KEY"),
+        llm_timeout_seconds=int(
+            os.getenv("MCP_LLM_TIMEOUT_SECONDS", str(cfg.llm.timeout_seconds))
+        ),
+        llm_system_prompt=os.getenv("MCP_LLM_SYSTEM_PROMPT", cfg.llm.system_prompt),
     )

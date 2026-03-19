@@ -1,6 +1,16 @@
 # MCP CRM
 
-Servidor MCP em Python para cadastro e busca semantica de usuarios com SQLite e FAISS.
+Servidor MCP em Python para cadastro, busca semantica e respostas assistidas por LLM sobre usuarios persistidos em SQLite.
+
+## Nota sobre esta branch
+
+Esta branch (`feat/sqlite-embeddings-llm-ready`) e um follow-up da entrega original do case.
+
+- a release `v1.0.0` manteve FAISS como indice derivado
+- esta branch remove o FAISS do runtime
+- os embeddings continuam sendo gerados, mas ficam persistidos na propria tabela `users`
+- a busca semantica passa a ser feita diretamente a partir do SQLite
+- foi adicionada a tool `ask_crm` para testar um fluxo com LLM
 
 ## Escopo
 
@@ -8,31 +18,37 @@ Tools expostas pelo servidor:
 
 | Tool | Descricao |
 |---|---|
-| `create_user` | Cria usuario, gera embedding e indexa no FAISS |
+| `create_user` | Cria usuario, gera embedding e persiste tudo no SQLite |
 | `get_user` | Busca usuario por id |
-| `search_users` | Busca semantica por similaridade |
+| `search_users` | Busca semantica por similaridade sobre embeddings persistidos |
 | `list_users` | Listagem paginada |
+| `ask_crm` | Busca usuarios relevantes e pede para uma LLM responder com base nesse contexto |
 
 ## Stack
 
-- Python 3.12, FastMCP, SQLite, FAISS CPU, sentence-transformers
+- Python 3.12
+- FastMCP
+- SQLite
+- sentence-transformers
+- NumPy
 
 ## Arquitetura
 
 Monolito modular orientado a fatias verticais:
 
-```
+```text
 src/mcp_crm/
-  drivers/        # entrypoint MCP (stdio)
-  shared/         # utilitarios sem acoplamento de dominio
+  drivers/          # entrypoint MCP
   slices/users/
-    domain/       # entidades e erros
-    application/  # ports, service (use cases)
-    infrastructure/ # SQLite, FAISS, embeddings, config, logging
+    domain/         # entidades e erros
+    application/    # services e ports
+    infrastructure/ # SQLite, embeddings, llm, config, logging
 ```
 
-- SQLite e a fonte de verdade; FAISS e indice derivado, reconstruido a partir do banco
-- embeddings locais via sentence-transformers (sem API externa)
+- SQLite e a fonte de verdade e tambem o armazenamento dos embeddings
+- a busca semantica calcula similaridade em memoria a partir dos embeddings salvos no banco
+- embeddings locais via `sentence-transformers`
+- integracao com LLM isolada por adapter, com suporte a `stub` e `openai-compatible`
 - logging estruturado em JSON (ou texto via `MCP_LOG_FORMAT=text`)
 
 ## Docker
@@ -43,7 +59,7 @@ Build:
 docker build -t mcp-crm .
 ```
 
-Execucao com persistencia:
+Execucao base:
 
 ```bash
 docker run --rm -v "$(pwd)/data/runtime:/app/data/runtime" mcp-crm
@@ -59,22 +75,57 @@ Shell interativo:
 docker run --rm -it -v "$(pwd)/data/runtime:/app/data/runtime" mcp-crm bash
 ```
 
-Para manter CPU-only, o build instala torch pela wheel index de CPU do PyTorch.
+## Configuracao de LLM
+
+`ask_crm` so fica disponivel quando um provider e configurado.
+
+### Modo `stub`
+
+Usado para smoke tests e verificacao local sem dependencia externa:
+
+```bash
+docker run --rm \
+  -e MCP_LLM_PROVIDER=stub \
+  -v "$(pwd)/data/runtime:/app/data/runtime" \
+  mcp-crm python docs/client_example.py
+```
+
+### Modo `openai-compatible`
+
+Para testar com um endpoint compativel com a API de chat completions:
+
+```bash
+docker run --rm \
+  -e MCP_LLM_PROVIDER=openai-compatible \
+  -e MCP_LLM_API_KEY="$MCP_LLM_API_KEY" \
+  -e MCP_LLM_MODEL="gpt-4.1-mini" \
+  -e MCP_LLM_BASE_URL="https://api.openai.com/v1" \
+  -v "$(pwd)/data/runtime:/app/data/runtime" \
+  mcp-crm python docs/client_example.py
+```
+
+Variaveis relevantes:
+
+- `MCP_EMBEDDING_PROVIDER`: `sentence-transformers` ou `deterministic`
+- `MCP_LLM_PROVIDER`: `disabled`, `stub` ou `openai-compatible`
+- `MCP_LLM_API_KEY`: obrigatoria no modo `openai-compatible`
+- `MCP_LLM_MODEL`: modelo usado no modo `openai-compatible`
+- `MCP_LLM_BASE_URL`: base URL do provedor compativel
+- `MCP_LLM_SYSTEM_PROMPT`: sobrescreve o prompt de sistema padrao
 
 ## Exemplos de uso
 
-Exemplos completos de chamada das tools estao em [docs/](docs/):
-
-- [docs/client_example.py](docs/client_example.py) — script exercitando `create_user`, `get_user` e `search_users` via FastMCP Client
+O fluxo completo das tools esta em [docs/client_example.py](docs/client_example.py).
 
 ### Uso via Python
 
-Exemplo completo chamando `create_user`, `get_user`, `search_users` e `list_users` em processo:
+Exemplo em processo chamando `create_user`, `get_user`, `search_users`, `list_users` e `ask_crm`:
 
 ```python
 from __future__ import annotations
 
 import asyncio
+import os
 
 from fastmcp import Client
 
@@ -82,10 +133,9 @@ from mcp_crm.drivers import mcp_server
 
 
 async def main() -> None:
+    os.environ.setdefault("MCP_LLM_PROVIDER", "stub")
+
     async with Client(mcp_server.mcp) as client:
-        # ------------------------------------------------------------
-        # 1. create_user
-        # ------------------------------------------------------------
         created = await client.call_tool(
             "create_user",
             {
@@ -96,62 +146,49 @@ async def main() -> None:
         )
         print("create_user ->", created.data)
 
-        # ------------------------------------------------------------
-        # 2. get_user
-        # ------------------------------------------------------------
         found = await client.call_tool("get_user", {"user_id": created.data})
         print("get_user ->", found.data)
 
-        # ------------------------------------------------------------
-        # 3. search_users
-        # ------------------------------------------------------------
         results = await client.call_tool(
             "search_users",
             {"query": "cliente premium com foco em investimentos", "top_k": 2},
         )
         print("search_users ->", results.data)
 
-        # ------------------------------------------------------------
-        # 4. list_users
-        # ------------------------------------------------------------
         page = await client.call_tool("list_users", {"limit": 10, "offset": 0})
         print("list_users ->", page.data)
 
-
-asyncio.run(main())
-```
-
-Se preferir usar o script pronto do repositório:
-
-```python
-from docs.client_example import main
-
-import asyncio
+        answer = await client.call_tool(
+            "ask_crm",
+            {
+                "question": "Quem no CRM parece mais interessado em investimentos?",
+                "top_k": 1,
+            },
+        )
+        print("ask_crm ->", answer.data)
 
 
 asyncio.run(main())
 ```
 
-Executar o exemplo:
+Para rodar o exemplo pronto do repositorio:
 
 ```bash
-docker run --rm -it -v "$(pwd)/data/runtime:/app/data/runtime" mcp-crm python docs/client_example.py
-```
-
-```nu
-docker run --rm -it -v $"(pwd)/data/runtime:/app/data/runtime" mcp-crm python docs/client_example.py
+docker run --rm \
+  -e MCP_LLM_PROVIDER=stub \
+  -v "$(pwd)/data/runtime:/app/data/runtime" \
+  mcp-crm python docs/client_example.py
 ```
 
 ## Persistencia
 
-- `data/runtime/users.db` — SQLite (fonte de verdade)
-- `data/runtime/users.faiss` — indice vetorial (derivado)
+- `data/runtime/users.db` — SQLite com usuarios e embeddings
 
-A cada startup o indice e sincronizado com o banco. Se estiver ausente ou corrompido, o rebuild parte do SQLite.
+Os embeddings ficam armazenados na coluna `users.embedding` como `BLOB` `float32`.
 
 ## Testes
 
-Depois de construir a imagem, rode a suite montando `tests/` do checkout local no container:
+Suite principal dentro do container:
 
 ```bash
 docker build -t mcp-crm .
@@ -168,6 +205,9 @@ Smoke E2E do fluxo Docker real:
 ```bash
 RUN_DOCKER_SMOKE=1 pytest tests/smoke -m smoke -q
 ```
+
+O smoke reaproveita `mcp-crm:latest` quando a imagem ja existe, ou faz o build se ela ainda nao estiver disponivel. Depois monta o checkout atual em `/app`, roda o `docs/client_example.py` com `MCP_LLM_PROVIDER=stub`, exercita todas as tools e verifica a persistencia do SQLite.
+No smoke, `MCP_EMBEDDING_PROVIDER=deterministic` e usado para evitar download de modelo e manter o E2E reproduzivel.
 
 Lint:
 
@@ -190,10 +230,3 @@ do { docker rmi -f mcp-crm | ignore }; docker builder prune -af
 rm -rf data/runtime; mkdir data/runtime
 docker build --no-cache -t mcp-crm .
 ```
-
-## Aderencia ao case
-
-Esta implementacao atende ao case em [docs/case.md](docs/case.md):
-
-- tools obrigatorias: `create_user`, `search_users`, `get_user`
-- diferencial: `list_users`, validacao de email, Dockerfile, testes automatizados, logging estruturado

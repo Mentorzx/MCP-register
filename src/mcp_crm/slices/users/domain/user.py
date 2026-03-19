@@ -32,3 +32,10 @@ class SearchUserResponse:
     email: str
     description: str
     score: float
+
+
+@dataclass(slots=True, frozen=True)
+class AskCRMResponse:
+    question: str
+    answer: str
+    matches: list[SearchUserResponse]

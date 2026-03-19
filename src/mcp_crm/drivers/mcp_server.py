@@ -6,18 +6,24 @@ from functools import lru_cache
 
 from fastmcp import FastMCP
 
+from mcp_crm.slices.users.application.crm_assistant_service import CRMAssistantService
 from mcp_crm.slices.users.application.user_service import UserService
 from mcp_crm.slices.users.domain.errors import (
+    ConfigurationError,
     DuplicateEmailError,
     MCPCRMError,
     UserNotFoundError,
     ValidationError,
     VectorStoreError,
 )
-from mcp_crm.slices.users.domain.user import SearchUserResponse, UserResponse
+from mcp_crm.slices.users.domain.user import (
+    AskCRMResponse,
+    SearchUserResponse,
+    UserResponse,
+)
 from mcp_crm.slices.users.infrastructure.config import get_project_config, get_settings
-from mcp_crm.slices.users.infrastructure.embeddings import SentenceTransformerEmbedder
-from mcp_crm.slices.users.infrastructure.faiss_store import FaissStore
+from mcp_crm.slices.users.infrastructure.embeddings import build_embedder
+from mcp_crm.slices.users.infrastructure.llm import build_llm_client
 from mcp_crm.slices.users.infrastructure.logging import configure_logging, get_logger
 from mcp_crm.slices.users.infrastructure.sqlite_repository import SQLiteUserRepository
 
@@ -42,11 +48,22 @@ def get_service() -> UserService:
     """Build and cache the application service."""
     _boot()
     settings = get_settings()
-    embedder = SentenceTransformerEmbedder(settings.embedding_model)
-    dims = len(embedder.embed("probe"))
-    store = FaissStore(settings.faiss_path, dims)
-    repo = SQLiteUserRepository(settings.db_path, store)
+    embedder = build_embedder(settings)
+    repo = SQLiteUserRepository(settings.db_path)
     return UserService(repo, embedder)
+
+
+@lru_cache(maxsize=1)
+def get_assistant_service() -> CRMAssistantService:
+    """Build and cache the assistant service."""
+    _boot()
+    settings = get_settings()
+    llm = build_llm_client(settings)
+    return CRMAssistantService(
+        get_service(),
+        llm,
+        system_prompt=settings.llm_system_prompt,
+    )
 
 
 def _raise_domain_error(tool_name: str, exc: MCPCRMError) -> RuntimeError:
@@ -138,6 +155,28 @@ def list_users(
         raise _raise_domain_error("list_users", exc) from exc
     except Exception as exc:
         raise _raise_unexpected_error("list_users", exc) from exc
+
+
+@mcp.tool()
+def ask_crm(
+    question: str,
+    top_k: int = _CFG.search.default_top_k,
+) -> AskCRMResponse:
+    """Answer a CRM question grounded in the most relevant users."""
+    try:
+        response = get_assistant_service().ask(question=question, top_k=top_k)
+        logger.info(
+            "crm question answered",
+            extra={
+                "event": "tool.ask_crm",
+                "hits": len(response.matches),
+            },
+        )
+        return response
+    except (ValidationError, VectorStoreError, ConfigurationError) as exc:
+        raise _raise_domain_error("ask_crm", exc) from exc
+    except Exception as exc:
+        raise _raise_unexpected_error("ask_crm", exc) from exc
 
 
 def main() -> None:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import sqlite3
+
+import numpy as np
 import pytest
 
 from mcp_crm.slices.users.domain.errors import DuplicateEmailError, VectorStoreError
-from mcp_crm.slices.users.infrastructure.faiss_store import FaissStore
 from mcp_crm.slices.users.infrastructure.sqlite_repository import SQLiteUserRepository
-from tests.support import EMBEDDING_DIMENSIONS, build_embedder, build_repo
+from tests.support import build_embedder, build_repo
 
 
 @pytest.fixture()
@@ -29,6 +31,25 @@ class TestSQLiteRepository:
         assert user.name == "Ana"
         assert user.email == "ana@t.com"
 
+    def test_persists_embedding_blob(self, tmp_path, embedder):
+        db_path = tmp_path / "users.db"
+        repo = SQLiteUserRepository(db_path)
+        uid = repo.create_user(
+            name="Ana",
+            email="ana@t.com",
+            description="premium client",
+            embedding=embedder.embed("premium client"),
+        )
+
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT length(embedding) FROM users WHERE id = ?",
+                (uid,),
+            ).fetchone()
+
+        assert row is not None
+        assert int(row[0]) > 0
+
     def test_get_missing(self, repo):
         assert repo.get_user(42) is None
 
@@ -47,13 +68,24 @@ class TestSQLiteRepository:
         assert [u.name for u in users] == ["U0", "U1", "U2"]
 
     def test_search_returns_results(self, repo, embedder):
-        emb = embedder.embed("machine learning engineer")
         repo.create_user(
-            name="ML", email="ml@t.com", description="ml engineer", embedding=emb
+            name="ML",
+            email="ml@t.com",
+            description="machine learning engineer",
+            embedding=embedder.embed("machine learning engineer"),
         )
-        hits = repo.search_users(embedder.embed("machine learning"), top_k=1)
-        assert len(hits) == 1
+        repo.create_user(
+            name="Sales",
+            email="sales@t.com",
+            description="enterprise account executive",
+            embedding=embedder.embed("enterprise account executive"),
+        )
+
+        hits = repo.search_users(embedder.embed("machine learning"), top_k=2)
+
+        assert len(hits) == 2
         assert hits[0].user.name == "ML"
+        assert hits[0].score >= hits[1].score
 
     def test_duplicate_email_raises(self, repo, embedder):
         emb = embedder.embed("test")
@@ -63,15 +95,9 @@ class TestSQLiteRepository:
                 name="B", email="dup@t.com", description="b", embedding=emb
             )
 
-    def test_rebuilds_from_sqlite_when_index_file_is_corrupted(
-        self,
-        tmp_path,
-        embedder,
-    ):
+    def test_search_raises_when_embedding_blob_is_corrupted(self, tmp_path, embedder):
         db_path = tmp_path / "users.db"
-        faiss_path = tmp_path / "users.faiss"
-
-        repo = SQLiteUserRepository(db_path, FaissStore(faiss_path, EMBEDDING_DIMENSIONS))
+        repo = SQLiteUserRepository(db_path)
         repo.create_user(
             name="Ana",
             email="ana@t.com",
@@ -79,47 +105,35 @@ class TestSQLiteRepository:
             embedding=embedder.embed("premium client"),
         )
 
-        faiss_path.write_bytes(b"not-a-faiss-index")
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                "UPDATE users SET embedding = ? WHERE email = ?",
+                (b"bad", "ana@t.com"),
+            )
 
-        recovered_repo = SQLiteUserRepository(
-            db_path,
-            FaissStore(faiss_path, EMBEDDING_DIMENSIONS),
+        with pytest.raises(VectorStoreError, match="corrupted"):
+            repo.search_users(embedder.embed("premium client"), top_k=1)
+
+    def test_search_raises_when_embedding_dimensions_do_not_match(
+        self,
+        tmp_path,
+        embedder,
+    ):
+        db_path = tmp_path / "users.db"
+        repo = SQLiteUserRepository(db_path)
+        repo.create_user(
+            name="Ana",
+            email="ana@t.com",
+            description="premium client",
+            embedding=embedder.embed("premium client"),
         )
-        hits = recovered_repo.search_users(embedder.embed("premium client"), top_k=1)
 
-        assert len(hits) == 1
-        assert hits[0].user.email == "ana@t.com"
+        bad_embedding = np.asarray([1.0, 2.0], dtype=np.float32).tobytes()
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                "UPDATE users SET embedding = ? WHERE email = ?",
+                (bad_embedding, "ana@t.com"),
+            )
 
-
-class TestFaissStore:
-    def test_add_and_search(self, tmp_path):
-        store = FaissStore(tmp_path / "idx.faiss", 4)
-        store.add(1, [0.5, 0.5, 0.5, 0.5])
-        hits = store.search([0.5, 0.5, 0.5, 0.5], top_k=1)
-        assert len(hits) == 1
-        assert hits[0][0] == 1
-
-    def test_empty_search(self, tmp_path):
-        store = FaissStore(tmp_path / "idx.faiss", 4)
-        assert store.search([1, 0, 0, 0], top_k=5) == []
-
-    def test_rebuild(self, tmp_path):
-        store = FaissStore(tmp_path / "idx.faiss", 4)
-        store.add(1, [1, 0, 0, 0])
-        store.rebuild([(2, [0, 1, 0, 0]), (3, [0, 0, 1, 0])])
-        hits = store.search([0, 1, 0, 0], top_k=1)
-        assert hits[0][0] == 2
-
-    def test_dimension_mismatch(self, tmp_path):
-        store = FaissStore(tmp_path / "idx.faiss", 4)
-        with pytest.raises(VectorStoreError):
-            store.add(1, [1, 0])  # wrong dim
-
-    def test_persistence(self, tmp_path):
-        path = tmp_path / "idx.faiss"
-        s1 = FaissStore(path, 4)
-        s1.add(1, [1, 0, 0, 0])
-        # reload from disk
-        s2 = FaissStore(path, 4)
-        hits = s2.search([1, 0, 0, 0], top_k=1)
-        assert hits[0][0] == 1
+        with pytest.raises(VectorStoreError, match="unexpected dimensions"):
+            repo.search_users(embedder.embed("premium client"), top_k=1)

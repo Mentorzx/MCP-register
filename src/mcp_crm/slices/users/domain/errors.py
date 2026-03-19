@@ -19,3 +19,7 @@ class DuplicateEmailError(MCPCRMError):
 
 class VectorStoreError(MCPCRMError):
     pass
+
+
+class ConfigurationError(MCPCRMError):
+    pass

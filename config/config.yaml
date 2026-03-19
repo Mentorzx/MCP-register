@@ -8,10 +8,10 @@ app:
 runtime:
   data_dir: data/runtime
   db_filename: users.db
-  faiss_filename: users.faiss
   sqlite_timeout_seconds: 30
 
 embedding:
+  provider: sentence-transformers
   model: sentence-transformers/all-MiniLM-L6-v2
 
 search:
@@ -28,3 +28,12 @@ testing:
 
 logging:
   default_format: json
+
+llm:
+  provider: disabled
+  model: gpt-4.1-mini
+  base_url: https://api.openai.com/v1
+  timeout_seconds: 30
+  system_prompt: >-
+    You are a CRM assistant. Answer only with facts grounded in the provided CRM
+    matches. If the context is insufficient, say that clearly.
