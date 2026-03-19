@@ -2,26 +2,20 @@ from __future__ import annotations
 
 import pytest
 
-from mcp_crm.slices.users.application.user_service import UserService
 from mcp_crm.slices.users.domain.errors import (
     DuplicateEmailError,
     UserNotFoundError,
     ValidationError,
 )
 from mcp_crm.slices.users.infrastructure.config import get_project_config
-from mcp_crm.slices.users.infrastructure.embeddings import DeterministicTestEmbedder
-from mcp_crm.slices.users.infrastructure.faiss_store import FaissStore
-from mcp_crm.slices.users.infrastructure.sqlite_repository import SQLiteUserRepository
+from tests.support import build_service
 
 _CFG = get_project_config()
 
 
 @pytest.fixture()
 def service(tmp_path):
-    embedder = DeterministicTestEmbedder(dimensions=16)
-    store = FaissStore(tmp_path / "test.faiss", 16)
-    repo = SQLiteUserRepository(tmp_path / "test.db", store)
-    return UserService(repo, embedder)
+    return build_service(tmp_path)
 
 
 class TestCreateUser:

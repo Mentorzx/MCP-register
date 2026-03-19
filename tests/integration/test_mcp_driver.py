@@ -7,12 +7,7 @@ from fastmcp.exceptions import ToolError
 
 from mcp_crm.drivers.mcp_server import mcp
 from mcp_crm.slices.users.application.user_service import UserService
-from mcp_crm.slices.users.infrastructure.embeddings import DeterministicTestEmbedder
-
-
-class _DeterministicMCPEmbedder(DeterministicTestEmbedder):
-    def __init__(self, _model_name: str) -> None:
-        super().__init__(dimensions=16)
+from tests.support import DeterministicMCPEmbedder
 
 
 @pytest.fixture()
@@ -24,7 +19,7 @@ async def client(tmp_path, monkeypatch):
     monkeypatch.setattr(
         mcp_server,
         "SentenceTransformerEmbedder",
-        _DeterministicMCPEmbedder,
+        DeterministicMCPEmbedder,
     )
 
     mcp_server.get_service.cache_clear()

@@ -3,20 +3,19 @@ from __future__ import annotations
 import pytest
 
 from mcp_crm.slices.users.domain.errors import DuplicateEmailError, VectorStoreError
-from mcp_crm.slices.users.infrastructure.embeddings import DeterministicTestEmbedder
 from mcp_crm.slices.users.infrastructure.faiss_store import FaissStore
 from mcp_crm.slices.users.infrastructure.sqlite_repository import SQLiteUserRepository
+from tests.support import EMBEDDING_DIMENSIONS, build_embedder, build_repo
 
 
 @pytest.fixture()
 def embedder():
-    return DeterministicTestEmbedder(dimensions=16)
+    return build_embedder()
 
 
 @pytest.fixture()
-def repo(tmp_path, embedder):
-    store = FaissStore(tmp_path / "test.faiss", 16)
-    return SQLiteUserRepository(tmp_path / "test.db", store)
+def repo(tmp_path):
+    return build_repo(tmp_path)
 
 
 class TestSQLiteRepository:
@@ -72,7 +71,7 @@ class TestSQLiteRepository:
         db_path = tmp_path / "users.db"
         faiss_path = tmp_path / "users.faiss"
 
-        repo = SQLiteUserRepository(db_path, FaissStore(faiss_path, 16))
+        repo = SQLiteUserRepository(db_path, FaissStore(faiss_path, EMBEDDING_DIMENSIONS))
         repo.create_user(
             name="Ana",
             email="ana@t.com",
@@ -82,7 +81,10 @@ class TestSQLiteRepository:
 
         faiss_path.write_bytes(b"not-a-faiss-index")
 
-        recovered_repo = SQLiteUserRepository(db_path, FaissStore(faiss_path, 16))
+        recovered_repo = SQLiteUserRepository(
+            db_path,
+            FaissStore(faiss_path, EMBEDDING_DIMENSIONS),
+        )
         hits = recovered_repo.search_users(embedder.embed("premium client"), top_k=1)
 
         assert len(hits) == 1
