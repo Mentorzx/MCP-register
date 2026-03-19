@@ -1,23 +1,21 @@
-"""Domain and application errors for the users slice."""
-
 from __future__ import annotations
 
 
 class MCPCRMError(Exception):
-    """Base error for the project."""
+    pass
 
 
 class ValidationError(MCPCRMError):
-    """Raised when input data is invalid."""
+    pass
 
 
 class UserNotFoundError(MCPCRMError):
-    """Raised when a user cannot be found."""
+    pass
 
 
 class DuplicateEmailError(MCPCRMError):
-    """Raised when email uniqueness is violated."""
+    pass
 
 
 class VectorStoreError(MCPCRMError):
-    """Raised for index lifecycle failures."""
+    pass

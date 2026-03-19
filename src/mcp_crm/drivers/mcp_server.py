@@ -1,4 +1,4 @@
-"""MCP server entrypoint."""
+"""MCP server driver — exposes CRM tools over stdio."""
 
 from __future__ import annotations
 
@@ -14,72 +14,44 @@ from mcp_crm.slices.users.domain.errors import (
     ValidationError,
     VectorStoreError,
 )
-from mcp_crm.slices.users.domain.user import (
-    SearchUserResponse,
-    UserResponse,
-)
-from mcp_crm.slices.users.infrastructure.config import get_settings
-from mcp_crm.slices.users.infrastructure.config import get_project_config
-from mcp_crm.slices.users.infrastructure.embeddings import (
-    SentenceTransformerEmbedder,
-)
+from mcp_crm.slices.users.domain.user import SearchUserResponse, UserResponse
+from mcp_crm.slices.users.infrastructure.config import get_project_config, get_settings
+from mcp_crm.slices.users.infrastructure.embeddings import SentenceTransformerEmbedder
 from mcp_crm.slices.users.infrastructure.faiss_store import FaissStore
-from mcp_crm.slices.users.infrastructure.logging import (
-    configure_logging,
-    get_logger,
-)
-from mcp_crm.slices.users.infrastructure.sqlite_repository import (
-    SQLiteUserRepository,
-)
+from mcp_crm.slices.users.infrastructure.logging import configure_logging, get_logger
+from mcp_crm.slices.users.infrastructure.sqlite_repository import SQLiteUserRepository
 
 logger = get_logger(__name__)
-PROJECT_CONFIG = get_project_config()
+_CFG = get_project_config()
 mcp = FastMCP(
-    PROJECT_CONFIG.app.name,
-    instructions=PROJECT_CONFIG.app.instructions,
-    version=PROJECT_CONFIG.app.version,
+    _CFG.app.name,
+    instructions=_CFG.app.instructions,
+    version=_CFG.app.version,
     mask_error_details=False,
     strict_input_validation=True,
 )
 
 
 @lru_cache(maxsize=1)
-def _configure_runtime() -> None:
-    """Configure runtime services lazily to avoid import-time side effects.
-
-    This keeps stdio-safe imports and defers global logger setup until runtime.
-    """
+def _boot() -> None:
     configure_logging()
 
 
 @lru_cache(maxsize=1)
 def get_service() -> UserService:
-    """Build the application lazily.
-
-    Returns:
-        A cached user service instance bound to the configured runtime.
-    """
-    _configure_runtime()
+    """Build and cache the application service."""
+    _boot()
     settings = get_settings()
     embedder = SentenceTransformerEmbedder(settings.embedding_model)
-    dimensions = len(embedder.embed("dimension probe"))
-    faiss_store = FaissStore(settings.faiss_path, dimensions)
-    repository = SQLiteUserRepository(settings.db_path, faiss_store)
-    return UserService(repository, embedder)
+    dims = len(embedder.embed("probe"))
+    store = FaissStore(settings.faiss_path, dims)
+    repo = SQLiteUserRepository(settings.db_path, store)
+    return UserService(repo, embedder)
 
 
 def _raise_domain_error(tool_name: str, exc: MCPCRMError) -> RuntimeError:
-    """Translate a known domain error into an MCP-safe exception.
-
-    Args:
-        tool_name: The tool that failed.
-        exc: Domain-level exception raised during execution.
-
-    Raises:
-        RuntimeError: Always raised with a user-facing English message.
-    """
     logger.warning(
-        "Tool execution failed with a handled domain error.",
+        "Tool execution failed with a handled error.",
         extra={
             "event": "mcp.tool_error",
             "tool_name": tool_name,
@@ -91,15 +63,6 @@ def _raise_domain_error(tool_name: str, exc: MCPCRMError) -> RuntimeError:
 
 
 def _raise_unexpected_error(tool_name: str, exc: Exception) -> RuntimeError:
-    """Translate an unexpected exception into an MCP-safe error.
-
-    Args:
-        tool_name: The tool that failed.
-        exc: Unexpected exception raised during execution.
-
-    Raises:
-        RuntimeError: Always raised with a generic internal error message.
-    """
     logger.exception(
         "Tool execution failed with an unexpected error.",
         extra={
@@ -115,28 +78,11 @@ def _raise_unexpected_error(tool_name: str, exc: Exception) -> RuntimeError:
 
 @mcp.tool()
 def create_user(name: str, email: str, description: str) -> int:
-    """Create a new CRM user.
-
-    Args:
-        name: User display name.
-        email: User email address.
-        description: Free-form CRM description.
-
-    Returns:
-        The newly created user id.
-    """
+    """Create a new CRM user."""
     try:
-        service = get_service()
-        user_id = service.create_user(
-            name=name,
-            email=email,
-            description=description,
-        )
-        logger.info(
-            "Executed create_user successfully.",
-            extra={"event": "tool.create_user", "user_id": user_id},
-        )
-        return user_id
+        uid = get_service().create_user(name=name, email=email, description=description)
+        logger.info("user created", extra={"event": "tool.create_user", "user_id": uid})
+        return uid
     except (ValidationError, DuplicateEmailError, VectorStoreError) as exc:
         raise _raise_domain_error("create_user", exc) from exc
     except Exception as exc:
@@ -145,21 +91,13 @@ def create_user(name: str, email: str, description: str) -> int:
 
 @mcp.tool()
 def get_user(user_id: int) -> UserResponse:
-    """Get a user by identifier.
-
-    Args:
-        user_id: Persistent user identifier.
-
-    Returns:
-        A structured user response.
-    """
+    """Get a user by id."""
     try:
-        payload = get_service().get_user(user_id=user_id)
+        result = get_service().get_user(user_id=user_id)
         logger.info(
-            "Executed get_user successfully.",
-            extra={"event": "tool.get_user", "user_id": user_id},
+            "user fetched", extra={"event": "tool.get_user", "user_id": user_id}
         )
-        return payload
+        return result
     except (ValidationError, UserNotFoundError) as exc:
         raise _raise_domain_error("get_user", exc) from exc
     except Exception as exc:
@@ -169,28 +107,15 @@ def get_user(user_id: int) -> UserResponse:
 @mcp.tool()
 def search_users(
     query: str,
-    top_k: int = PROJECT_CONFIG.search.default_top_k,
+    top_k: int = _CFG.search.default_top_k,
 ) -> list[SearchUserResponse]:
-    """Search semantically similar users.
-
-    Args:
-        query: Search text to encode.
-        top_k: Maximum number of matches to return.
-
-    Returns:
-        Ranked structured search results.
-    """
+    """Search semantically similar users."""
     try:
-        payload = get_service().search_users(query=query, top_k=top_k)
+        results = get_service().search_users(query=query, top_k=top_k)
         logger.info(
-            "Executed search_users successfully.",
-            extra={
-                "event": "tool.search_users",
-                "top_k": top_k,
-                "results": len(payload),
-            },
+            "search done", extra={"event": "tool.search_users", "hits": len(results)}
         )
-        return payload
+        return results
     except (ValidationError, VectorStoreError) as exc:
         raise _raise_domain_error("search_users", exc) from exc
     except Exception as exc:
@@ -199,30 +124,16 @@ def search_users(
 
 @mcp.tool()
 def list_users(
-    limit: int = PROJECT_CONFIG.pagination.default_limit,
+    limit: int = _CFG.pagination.default_limit,
     offset: int = 0,
 ) -> list[UserResponse]:
-    """List users ordered by identifier.
-
-    Args:
-        limit: Maximum number of users to return.
-        offset: Number of users to skip.
-
-    Returns:
-        A paginated list of structured user responses.
-    """
+    """List users with pagination."""
     try:
-        payload = get_service().list_users(limit=limit, offset=offset)
+        page = get_service().list_users(limit=limit, offset=offset)
         logger.info(
-            "Executed list_users successfully.",
-            extra={
-                "event": "tool.list_users",
-                "limit": limit,
-                "offset": offset,
-                "results": len(payload),
-            },
+            "listed users", extra={"event": "tool.list_users", "count": len(page)}
         )
-        return payload
+        return page
     except ValidationError as exc:
         raise _raise_domain_error("list_users", exc) from exc
     except Exception as exc:
@@ -230,13 +141,16 @@ def list_users(
 
 
 def main() -> None:
-    """Run the MCP server over stdio."""
-    _configure_runtime()
-    logger.info(
-        "Starting MCP CRM server over stdio.",
-        extra={"event": "mcp.startup"},
-    )
-    mcp.run(transport="stdio")
+    try:
+        _boot()
+        logger.info("starting mcp-crm", extra={"event": "mcp.startup"})
+        mcp.run(transport="stdio")
+    except Exception:
+        logger.exception(
+            "Failed to start MCP CRM.",
+            extra={"event": "mcp.startup_failed"},
+        )
+        raise
 
 
 if __name__ == "__main__":

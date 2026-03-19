@@ -1,5 +1,3 @@
-"""Embedding providers for the users slice."""
-
 from __future__ import annotations
 
 import math
@@ -9,31 +7,19 @@ from mcp_crm.slices.users.infrastructure.config import get_project_config
 
 
 class SentenceTransformerEmbedder(EmbeddingPort):
-    """Lazy wrapper over sentence-transformers."""
+    """Lazy-loaded sentence-transformers wrapper."""
 
     def __init__(self, model_name: str) -> None:
         self._model_name = model_name
         self._model = None
 
     def embed(self, text: str) -> list[float]:
-        """Encode text into a normalized dense embedding.
-
-        Args:
-            text: Input text to encode.
-
-        Returns:
-            A normalized embedding vector.
-        """
-        model = self._get_model()
+        """Return a normalized embedding for *text*."""
+        model = self._ensure_model()
         vector = model.encode(text, normalize_embeddings=True)
-        return [float(value) for value in vector.tolist()]
+        return [float(v) for v in vector.tolist()]
 
-    def _get_model(self):
-        """Load the embedding model on first use.
-
-        Returns:
-            A sentence-transformers model instance.
-        """
+    def _ensure_model(self):
         if self._model is None:
             from sentence_transformers import SentenceTransformer
 
@@ -42,28 +28,15 @@ class SentenceTransformerEmbedder(EmbeddingPort):
 
 
 class DeterministicTestEmbedder(EmbeddingPort):
-    """Fast deterministic embedder for tests and smoke checks."""
+    """Hash-based embedder for tests — fast, no model download."""
 
     def __init__(self, dimensions: int | None = None) -> None:
-        project_config = get_project_config()
-        resolved_dimensions = dimensions
-        if resolved_dimensions is None:
-            resolved_dimensions = (
-                project_config.testing.deterministic_embedding_dimensions
-            )
-        self._dimensions = resolved_dimensions
+        cfg = get_project_config()
+        self._dims = dimensions or cfg.testing.deterministic_embedding_dimensions
 
     def embed(self, text: str) -> list[float]:
-        """Encode text deterministically for stable tests.
-
-        Args:
-            text: Input text to encode.
-
-        Returns:
-            A normalized fixed-size embedding vector.
-        """
-        buckets = [0.0] * self._dimensions
-        for index, byte in enumerate(text.lower().encode("utf-8")):
-            buckets[index % self._dimensions] += float(byte)
-        norm = math.sqrt(sum(value * value for value in buckets)) or 1.0
-        return [value / norm for value in buckets]
+        buckets = [0.0] * self._dims
+        for i, b in enumerate(text.lower().encode("utf-8")):
+            buckets[i % self._dims] += float(b)
+        norm = math.sqrt(sum(v * v for v in buckets)) or 1.0
+        return [v / norm for v in buckets]

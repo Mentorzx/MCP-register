@@ -19,9 +19,9 @@ COPY docs ./docs
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir \
-        --index-url https://download.pytorch.org/whl/cpu \
-        torch==2.10.0 \
-    && pip install --no-cache-dir .
+    --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.10.0 \
+    && pip install --no-cache-dir ".[dev]"
 
 VOLUME ["/app/data/runtime"]
 

@@ -1,5 +1,3 @@
-"""SQLite repository with FAISS-backed semantic search."""
-
 from __future__ import annotations
 
 import sqlite3
@@ -8,10 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from mcp_crm.slices.users.application.ports import UserRepositoryPort
-from mcp_crm.slices.users.domain.errors import (
-    DuplicateEmailError,
-    VectorStoreError,
-)
+from mcp_crm.slices.users.domain.errors import DuplicateEmailError, VectorStoreError
 from mcp_crm.slices.users.domain.user import SearchResult, User
 from mcp_crm.slices.users.infrastructure.config import get_settings
 from mcp_crm.slices.users.infrastructure.faiss_store import FaissStore
@@ -19,18 +14,20 @@ from mcp_crm.slices.users.infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
 
+_USER_COLS = "id, name, email, description"
+
 
 class SQLiteUserRepository(UserRepositoryPort):
-    """SQLite persistence plus FAISS index coordination."""
+    """SQLite + FAISS: relational source of truth with vector search."""
 
     def __init__(self, db_path: Path, faiss_store: FaissStore) -> None:
         settings = get_settings()
         self._db_path = db_path
-        self._faiss_store = faiss_store
-        self._sqlite_timeout_seconds = settings.sqlite_timeout_seconds
+        self._faiss = faiss_store
+        self._timeout = settings.sqlite_timeout_seconds
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._initialize()
-        self._synchronize_index()
+        self._ensure_schema()
+        self._sync_index()
 
     def create_user(
         self,
@@ -40,206 +37,93 @@ class SQLiteUserRepository(UserRepositoryPort):
         description: str,
         embedding: list[float],
     ) -> int:
-        """Persist a user and update the vector index.
-
-        Args:
-            name: User display name.
-            email: Normalized email address.
-            description: CRM description.
-            embedding: Dense description embedding.
-
-        Returns:
-            The newly created user id.
-
-        Raises:
-            DuplicateEmailError: If the email already exists.
-            VectorStoreError: If indexing fails after persistence.
-        """
-        payload = np.asarray(embedding, dtype=np.float32).tobytes()
-        with self._connect() as connection:
+        """Persist a user row and index its embedding."""
+        blob = np.asarray(embedding, dtype=np.float32).tobytes()
+        with self._connect() as conn:
             try:
-                cursor = connection.execute(
-                    """
-                    INSERT INTO users (name, email, description, embedding)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (name, email, description, payload),
+                cur = conn.execute(
+                    "INSERT INTO users (name, email, description, embedding) VALUES (?, ?, ?, ?)",
+                    (name, email, description, blob),
                 )
             except sqlite3.IntegrityError as exc:
-                raise DuplicateEmailError(
-                    f"Email already exists: {email}"
-                ) from exc
-        if cursor.lastrowid is None:
-            raise RuntimeError(
-                "SQLite did not return a row id for the new user"
-            )
-        user_id = int(cursor.lastrowid)
+                raise DuplicateEmailError(f"email already registered: {email}") from exc
+
+        uid = int(cur.lastrowid)  # type: ignore[arg-type]
         try:
-            self._faiss_store.add(user_id, embedding)
+            self._faiss.add(uid, embedding)
         except VectorStoreError:
             logger.exception(
-                (
-                    "User persistence succeeded, but the FAISS index "
-                    "update failed."
-                ),
-                extra={"event": "users.index_failed", "user_id": user_id},
+                "row saved but index update failed", extra={"user_id": uid}
             )
             raise
-        logger.info(
-            "Persisted user successfully.",
-            extra={"event": "users.create", "user_id": user_id},
-        )
-        return user_id
+        logger.info("user persisted", extra={"event": "users.create", "user_id": uid})
+        return uid
 
     def get_user(self, user_id: int) -> User | None:
-        """Return a single user by id.
-
-        Args:
-            user_id: Persistent user identifier.
-
-        Returns:
-            The matching user or None.
-        """
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT id, name, email, description FROM users WHERE id = ?",
-                (user_id,),
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT {_USER_COLS} FROM users WHERE id = ?", (user_id,)
             ).fetchone()
-        if row is None:
-            return None
-        return User(
-            id=int(row[0]),
-            name=row[1],
-            email=row[2],
-            description=row[3],
-        )
+        return _row_to_user(row) if row else None
 
     def list_users(self, *, limit: int, offset: int) -> list[User]:
-        """Return a page of users ordered by id.
-
-        Args:
-            limit: Maximum number of rows to return.
-            offset: Number of rows to skip.
-
-        Returns:
-            The selected page of users.
-        """
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT id, name, email, description
-                FROM users
-                ORDER BY id ASC
-                LIMIT ? OFFSET ?
-                """,
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT {_USER_COLS} FROM users ORDER BY id ASC LIMIT ? OFFSET ?",
                 (limit, offset),
             ).fetchall()
-        return [
-            User(
-                id=int(row[0]),
-                name=row[1],
-                email=row[2],
-                description=row[3],
-            )
-            for row in rows
-        ]
+        return [_row_to_user(r) for r in rows]
 
-    def search_users(
-        self,
-        embedding: list[float],
-        *,
-        top_k: int,
-    ) -> list[SearchResult]:
-        """Run semantic search against the FAISS index.
-
-        Args:
-            embedding: Dense query embedding.
-            top_k: Maximum number of matches to return.
-
-        Returns:
-            Ranked search results for users still present in SQLite.
-        """
-        hits = self._faiss_store.search(embedding, top_k)
+    def search_users(self, embedding: list[float], *, top_k: int) -> list[SearchResult]:
+        """Vector search via FAISS, then hydrate from SQLite."""
+        hits = self._faiss.search(embedding, top_k)
         if not hits:
             return []
-        user_map = self._load_users([user_id for user_id, _score in hits])
+        users = self._batch_load([uid for uid, _ in hits])
         return [
-            SearchResult(user=user_map[user_id], score=score)
-            for user_id, score in hits
-            if user_id in user_map
+            SearchResult(user=users[uid], score=score)
+            for uid, score in hits
+            if uid in users
         ]
 
-    def _initialize(self) -> None:
-        """Create the users table when it does not exist."""
-        with self._connect() as connection:
-            connection.execute(
+    # -- private -----------------------------------------------------------
+
+    def _ensure_schema(self) -> None:
+        with self._connect() as conn:
+            conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    email TEXT NOT NULL UNIQUE,
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name        TEXT NOT NULL,
+                    email       TEXT NOT NULL UNIQUE,
                     description TEXT NOT NULL,
-                    embedding BLOB NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    embedding   BLOB NOT NULL,
+                    created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
 
-    def _synchronize_index(self) -> None:
-        """Synchronize the FAISS index with SQLite contents."""
-        rows = self._load_embeddings()
-        self._faiss_store.rebuild(rows)
-
-    def _load_embeddings(self) -> list[tuple[int, list[float]]]:
-        """Load persisted embeddings from SQLite.
-
-        Returns:
-            Stored user ids paired with their embeddings.
-        """
-        with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT id, embedding FROM users ORDER BY id ASC"
+    def _sync_index(self) -> None:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, embedding FROM users ORDER BY id"
             ).fetchall()
-        return [
-            (int(row[0]), np.frombuffer(row[1], dtype=np.float32).tolist())
-            for row in rows
+        pairs = [
+            (int(r[0]), np.frombuffer(r[1], dtype=np.float32).tolist()) for r in rows
         ]
+        self._faiss.rebuild(pairs)
 
-    def _load_users(self, user_ids: list[int]) -> dict[int, User]:
-        """Load a batch of users by identifier.
-
-        Args:
-            user_ids: User identifiers to fetch.
-
-        Returns:
-            A mapping of user id to user entity.
-        """
-        placeholders = ", ".join("?" for _ in user_ids)
-        with self._connect() as connection:
-            rows = connection.execute(
-                (
-                    "SELECT id, name, email, description "
-                    f"FROM users WHERE id IN ({placeholders})"
-                ),
-                user_ids,
+    def _batch_load(self, user_ids: list[int]) -> dict[int, User]:
+        ph = ", ".join("?" for _ in user_ids)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT {_USER_COLS} FROM users WHERE id IN ({ph})", user_ids
             ).fetchall()
-        return {
-            int(row[0]): User(
-                id=int(row[0]),
-                name=row[1],
-                email=row[2],
-                description=row[3],
-            )
-            for row in rows
-        }
+        return {int(r[0]): _row_to_user(r) for r in rows}
 
     def _connect(self) -> sqlite3.Connection:
-        """Open a SQLite connection for the repository.
+        return sqlite3.connect(self._db_path, timeout=self._timeout)
 
-        Returns:
-            A SQLite connection bound to the configured database path.
-        """
-        return sqlite3.connect(
-            self._db_path,
-            timeout=self._sqlite_timeout_seconds,
-        )
+
+def _row_to_user(row: tuple) -> User:
+    return User(id=int(row[0]), name=row[1], email=row[2], description=row[3])

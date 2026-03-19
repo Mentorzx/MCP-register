@@ -1,5 +1,3 @@
-"""Project logging helpers."""
-
 from __future__ import annotations
 
 import json
@@ -9,7 +7,7 @@ from datetime import UTC, datetime
 
 from mcp_crm.slices.users.infrastructure.config import get_project_config
 
-_STANDARD_RECORD_FIELDS = {
+_BUILTIN_FIELDS = {
     "args",
     "asctime",
     "created",
@@ -36,55 +34,42 @@ _STANDARD_RECORD_FIELDS = {
 
 
 class JsonFormatter(logging.Formatter):
-    """Serialize log records as compact JSON payloads."""
-
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, object] = {
-            "timestamp": datetime.fromtimestamp(
-                record.created,
-                tz=UTC,
-            ).isoformat(),
+            "ts": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "msg": record.getMessage(),
         }
         extras = {
-            key: value
-            for key, value in record.__dict__.items()
-            if key not in _STANDARD_RECORD_FIELDS and not key.startswith("_")
+            k: v
+            for k, v in record.__dict__.items()
+            if k not in _BUILTIN_FIELDS and not k.startswith("_")
         }
         if extras:
-            payload["context"] = extras
+            payload["ctx"] = extras
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=True, default=str)
 
 
 def configure_logging() -> None:
-    """Configure process-wide logging once."""
-    root_logger = logging.getLogger()
-    if root_logger.handlers:
+    root = logging.getLogger()
+    if root.handlers:
         return
 
-    project_config = get_project_config()
+    cfg = get_project_config()
     handler = logging.StreamHandler()
-    log_format = os.getenv(
-        "MCP_LOG_FORMAT",
-        project_config.logging.default_format,
-    ).lower()
-    if log_format == "json":
+    fmt = os.getenv("MCP_LOG_FORMAT", cfg.logging.default_format).lower()
+    if fmt == "json":
         handler.setFormatter(JsonFormatter())
     else:
         handler.setFormatter(
-            logging.Formatter(
-                fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-            )
+            logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
         )
-
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(handler)
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Return a configured logger."""
     return logging.getLogger(name)
