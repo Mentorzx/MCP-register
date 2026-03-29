@@ -12,6 +12,7 @@ Uso:
 from __future__ import annotations
 
 import asyncio
+from uuid import uuid4
 
 from fastmcp import Client
 
@@ -19,13 +20,15 @@ from mcp_crm.drivers import mcp_server
 
 
 async def main() -> None:
+    example_email = f"ana+{uuid4().hex[:8]}@example.com"
+
     async with Client(mcp_server.mcp) as c:
         # create_user
         created = await c.call_tool(
             "create_user",
             {
                 "name": "Ana Silva",
-                "email": "ana@example.com",
+                "email": example_email,
                 "description": "Cliente premium interessada em investimentos.",
             },
         )

@@ -1,0 +1,9 @@
+[mcp_servers.mcp_crm]
+command = "./.venv/bin/python"
+args = ["-m", "mcp_crm.drivers.mcp_server"]
+cwd = "."
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+
+[mcp_servers.mcp_crm.env]
+PYTHONPATH = "src"

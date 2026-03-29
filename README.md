@@ -180,6 +180,24 @@ docker run --rm \
   mcp-crm python docs/client_example.py
 ```
 
+## Uso com VS Code e Codex
+
+Este repositorio ja inclui configuracao pronta para clientes MCP baseados em stdio:
+
+- VS Code + GitHub Copilot usam `.vscode/mcp.json`
+- Codex CLI e extensao Codex usam `.codex/config.toml`
+
+Ambas as configuracoes sobem o servidor localmente com o virtualenv do projeto.
+
+No VS Code, abra o Chat e use `MCP: List Servers` para verificar se `mcp-crm` foi carregado.
+No Codex, a configuracao de projeto passa a valer neste checkout e o servidor aparece em `/mcp`.
+
+Observacao: `ask_crm` continua dependendo de configurar `MCP_LLM_PROVIDER` como `stub` ou `openai-compatible`.
+
+Guia detalhado de acoplamento:
+
+- [docs/mcp-clients.md](docs/mcp-clients.md)
+
 ## Persistencia
 
 - `data/runtime/users.db` — SQLite com usuarios e embeddings
