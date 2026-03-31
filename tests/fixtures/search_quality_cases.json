@@ -1,0 +1,43 @@
+{
+  "users": [
+    {"key": "animals_live", "name": "Animais Vivos", "email": "animals_live@example.com", "description": "animais vivos"},
+    {"key": "horses_purebred", "name": "Cavalos Raca Pura", "email": "horses_purebred@example.com", "description": "cavalos reprodutores de raca pura vivos"},
+    {"key": "horses_other", "name": "Outros Cavalos", "email": "horses_other@example.com", "description": "outros cavalos vivos"},
+    {"key": "donkeys_live", "name": "Asininos", "email": "donkeys_live@example.com", "description": "asininos vivos"},
+    {"key": "mules_live", "name": "Muares", "email": "mules_live@example.com", "description": "muares e bardotos vivos"},
+    {"key": "bovines_purebred", "name": "Bovinos Raca Pura", "email": "bovines_purebred@example.com", "description": "bovinos reprodutores de raca pura"},
+    {"key": "bovines_other", "name": "Outros Bovinos", "email": "bovines_other@example.com", "description": "outros bovinos vivos"},
+    {"key": "ornamental_fish", "name": "Peixes Ornamentais", "email": "ornamental_fish@example.com", "description": "peixes ornamentais vivos"},
+    {"key": "live_plants", "name": "Plantas Vivas", "email": "live_plants@example.com", "description": "plantas vivas e produtos de floricultura"},
+    {"key": "coffee_raw", "name": "Cafe Cru", "email": "coffee_raw@example.com", "description": "cafe nao torrado nao descafeinado"},
+    {"key": "coffee_roasted", "name": "Cafe Torrado", "email": "coffee_roasted@example.com", "description": "cafe torrado nao descafeinado"},
+    {"key": "green_tea", "name": "Cha Verde", "email": "green_tea@example.com", "description": "cha verde em embalagens imediatas"},
+    {"key": "black_tea", "name": "Cha Preto", "email": "black_tea@example.com", "description": "cha preto fermentado"},
+    {"key": "penicillin_meds", "name": "Medicamentos Penicilina", "email": "penicillin_meds@example.com", "description": "medicamentos contendo penicilinas ou seus derivados"},
+    {"key": "veterinary_vaccines", "name": "Vacinas Veterinarias", "email": "veterinary_vaccines@example.com", "description": "vacinas para medicina veterinaria"},
+    {"key": "welding_robots", "name": "Robos Soldagem", "email": "welding_robots@example.com", "description": "robos industriais de soldagem para linhas automatizadas"},
+    {"key": "painting_robots", "name": "Robos Pintura", "email": "painting_robots@example.com", "description": "robos industriais de pintura para linhas automatizadas"},
+    {"key": "aircraft_parts", "name": "Partes Aeronaves", "email": "aircraft_parts@example.com", "description": "partes de avioes ou de helicopteros"},
+    {"key": "turbojets", "name": "Turborreatores", "email": "turbojets@example.com", "description": "turborreatores e outros motores de reacao"}
+  ],
+  "queries": [
+    {"name": "exact_animais_vivos", "type": "exact", "query": "animais vivos", "relevant_keys": ["animals_live"]},
+    {"name": "exact_cafe_torrado", "type": "exact", "query": "cafe torrado nao descafeinado", "relevant_keys": ["coffee_roasted"]},
+    {"name": "specific_cavalos_raca_pura", "type": "specific", "query": "cavalos de raca pura vivos", "relevant_keys": ["horses_purebred"]},
+    {"name": "specific_vacinas_veterinarias", "type": "specific", "query": "vacinas veterinarias", "relevant_keys": ["veterinary_vaccines"]},
+    {"name": "specific_penicilinas", "type": "specific", "query": "medicamentos com penicilinas", "relevant_keys": ["penicillin_meds"]},
+    {"name": "broad_equideos", "type": "broad", "query": "equideos vivos", "relevant_keys": ["horses_purebred", "horses_other", "donkeys_live", "mules_live"]},
+    {"name": "broad_animais_vivos", "type": "broad", "query": "animais vivos", "relevant_keys": ["animals_live", "horses_purebred", "horses_other", "donkeys_live", "mules_live", "bovines_purebred", "bovines_other", "ornamental_fish"]},
+    {"name": "broad_cafe", "type": "broad", "query": "cafe", "relevant_keys": ["coffee_raw", "coffee_roasted"]},
+    {"name": "broad_cha", "type": "broad", "query": "cha", "relevant_keys": ["green_tea", "black_tea"]},
+    {"name": "broad_robos_industriais", "type": "broad", "query": "robos industriais", "relevant_keys": ["welding_robots", "painting_robots"]},
+    {"name": "lexical_cavalos", "type": "lexical", "query": "cavalos", "relevant_keys": ["horses_purebred", "horses_other"]},
+    {"name": "lexical_soldagem", "type": "lexical", "query": "soldagem", "relevant_keys": ["welding_robots"]},
+    {"name": "lexical_pintura", "type": "lexical", "query": "pintura", "relevant_keys": ["painting_robots"]},
+    {"name": "lexical_avioes", "type": "lexical", "query": "avioes", "relevant_keys": ["aircraft_parts"]},
+    {"name": "lexical_turborreatores", "type": "lexical", "query": "turborreatores", "relevant_keys": ["turbojets"]},
+    {"name": "hierarchical_aeronautica", "type": "hierarchical", "query": "itens de aeronaves e propulsao", "relevant_keys": ["aircraft_parts", "turbojets"]},
+    {"name": "hierarchical_bovinos", "type": "hierarchical", "query": "familia bovinos vivos", "relevant_keys": ["bovines_purebred", "bovines_other"]},
+    {"name": "hierarchical_plantas", "type": "hierarchical", "query": "plantas vivas", "relevant_keys": ["live_plants"]}
+  ]
+}

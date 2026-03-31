@@ -4,7 +4,6 @@ Roda in-process via FastMCP Client (sem servidor externo).
 
 Uso:
     docker run --rm -it \\
-      -e MCP_LLM_PROVIDER=stub \\
       -v "$(pwd)/data/runtime:/app/data/runtime" \\
       mcp-crm python docs/client_example.py
 """

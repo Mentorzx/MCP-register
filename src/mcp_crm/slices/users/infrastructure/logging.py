@@ -67,8 +67,14 @@ def configure_logging() -> None:
         handler.setFormatter(
             logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
         )
-    root.setLevel(logging.INFO)
+    level_name = os.getenv("MCP_LOG_LEVEL", "WARNING").upper()
+    root.setLevel(getattr(logging, level_name, logging.WARNING))
     root.addHandler(handler)
+
+    # Keep third-party protocol logs quiet in MCP clients like VS Code,
+    # which surface all stderr output as warnings.
+    logging.getLogger("fastmcp").setLevel(logging.WARNING)
+    logging.getLogger("mcp").setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:

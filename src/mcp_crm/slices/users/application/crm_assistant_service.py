@@ -33,7 +33,10 @@ class CRMAssistantService:
         if not candidate:
             raise ValidationError("question must not be empty")
 
-        matches = self._user_service.search_users(query=candidate, top_k=top_k)
+        matches = self._user_service.search_users(
+            query=candidate,
+            top_k=top_k,
+        )
         if not matches:
             return AskCRMResponse(
                 question=candidate,

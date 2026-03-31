@@ -1,71 +1,102 @@
 # Integracao do MCP com Copilot, VS Code e Codex
 
-Este projeto expõe um servidor MCP em stdio via Python:
+Se voce nao quer depender do venv local, o caminho mais simples para este projeto e usar Docker.
+
+O servidor MCP sobe em stdio a partir da imagem `mcp-crm`:
 
 ```bash
-./.venv/bin/python -m mcp_crm.drivers.mcp_server
+docker build -t mcp-crm .
+docker run --rm -i -v mcp-crm-runtime:/app/data/runtime mcp-crm
 ```
 
-O repositório já traz duas configurações prontas:
+Observacao importante:
 
-- workspace do VS Code e GitHub Copilot em [../.vscode/mcp.json](../.vscode/mcp.json)
-- projeto do Codex em [../.codex/config.toml](../.codex/config.toml)
+- no GitHub Copilot Chat do VS Code, o comando `/mcp` nao aparece; ali a verificacao e feita por `MCP: List Servers`
+- o comando `/mcp` e do Codex
 
 ## Pre-requisitos
 
-- abrir o repositório na raiz do projeto
-- ter o virtualenv do projeto disponível em `.venv`
-- ter as dependências instaladas nesse virtualenv
+- abrir o repositorio na raiz do projeto
+- ter Docker disponivel na maquina onde o MCP vai rodar
+- gerar a imagem antes de configurar o cliente
 
-Se precisar recriar o ambiente:
+Build inicial:
 
 ```bash
-/bin/python -m venv .venv
-./.venv/bin/pip install -e ".[dev]"
+docker build -t mcp-crm .
 ```
+
+## Teste rapido local
+
+Antes de abrir VS Code, Copilot ou Codex, valide o fluxo principal so com Docker:
+
+```bash
+docker build -t mcp-crm .
+docker run --rm \
+  -v mcp-crm-runtime:/app/data/runtime \
+  mcp-crm python docs/client_example.py
+```
+
+Esse comando exercita `create_user`, `get_user`, `search_users`, `list_users` e `ask_crm` sem usar o venv do host.
 
 ## GitHub Copilot no VS Code
 
-O caminho recomendado neste repositório é usar a configuração de workspace já versionada.
+Se voce quer Docker-only no Copilot do VS Code, use um `mcp.json` com `docker run`.
+
+O arquivo versionado [../.vscode/mcp.json](../.vscode/mcp.json) continua apontando para o venv local. Se a sua preferencia e evitar isso, substitua pelo bloco abaixo.
 
 1. Abra o projeto no VS Code.
-2. Confirme que [../.vscode/mcp.json](../.vscode/mcp.json) está presente.
-3. Abra o Chat do VS Code.
-4. Rode o comando `MCP: List Servers`.
-5. Verifique se `mcp-crm` aparece como servidor disponível.
-6. Se o VS Code pedir confiança para iniciar o servidor, aprove.
+2. Rode `docker build -t mcp-crm .` na raiz do repositorio.
+3. Edite [../.vscode/mcp.json](../.vscode/mcp.json) com a configuracao Docker abaixo.
+4. Abra o Chat do VS Code.
+5. Rode o comando `MCP: List Servers`.
+6. Verifique se `mcp-crm` aparece como servidor disponível.
+7. Se o VS Code pedir confiança para iniciar o servidor, aprove.
 
-Configuração usada no workspace:
+Configuracao Docker para workspace:
 
 ```json
 {
   "servers": {
     "mcp-crm": {
       "type": "stdio",
-      "command": "${workspaceFolder}/.venv/bin/python",
-      "args": ["-m", "mcp_crm.drivers.mcp_server"],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
-      }
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "mcp-crm-runtime:/app/data/runtime",
+        "mcp-crm"
+      ]
     }
   }
 }
 ```
 
+Se quiser explicitar o provider local `stub`, acrescente estes argumentos antes do nome da imagem:
+
+```json
+[
+  "-e",
+  "MCP_LLM_PROVIDER=stub"
+]
+```
+
 Observacoes importantes:
 
-- em janela remota, o servidor MCP executa onde a configuracao foi definida
-- se voce quer que o servidor rode na maquina remota, use configuracao de workspace ou `MCP: Open Remote User Configuration`
-- se voce usar configuracao de perfil do usuario, o processo roda na maquina local do VS Code
+- no Copilot do VS Code, use `MCP: List Servers`; nao use `/mcp`
+- em janela remota, o `docker` executa onde a configuracao foi definida
+- se voce alterar o codigo do servidor, refaca `docker build -t mcp-crm .`
 
 ## VS Code fora deste repositório
 
-Se quiser acoplar este mesmo servidor a partir do seu perfil do VS Code, sem depender do arquivo versionado do projeto:
+Se quiser acoplar este mesmo servidor a partir do seu perfil do VS Code, sem depender do checkout atual:
 
-1. Rode `MCP: Open User Configuration`.
-2. Adicione um servidor stdio apontando para este checkout.
-3. Salve o arquivo e rode `MCP: List Servers`.
+1. Rode `docker build -t mcp-crm /caminho/do/repositorio`.
+2. Rode `MCP: Open User Configuration`.
+3. Adicione um servidor stdio usando Docker.
+4. Salve o arquivo e rode `MCP: List Servers`.
 
 Exemplo de configuracao global:
 
@@ -74,78 +105,77 @@ Exemplo de configuracao global:
   "servers": {
     "mcp-crm": {
       "type": "stdio",
-      "command": "/home/Alex/Development/mcp-register/.venv/bin/python",
-      "args": ["-m", "mcp_crm.drivers.mcp_server"],
-      "cwd": "/home/Alex/Development/mcp-register",
-      "env": {
-        "PYTHONPATH": "/home/Alex/Development/mcp-register/src"
-      }
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "mcp-crm-runtime:/app/data/runtime",
+        "mcp-crm"
+      ]
     }
   }
 }
 ```
 
-Use esse formato quando quiser disponibilizar o MCP em qualquer workspace do seu perfil.
+Use esse formato quando quiser disponibilizar o MCP no seu perfil sem depender de um Python local configurado.
 
 ## Codex
 
-O Codex usa configuracao propria em `config.toml`. Neste repositório, ela já está pronta em [../.codex/config.toml](../.codex/config.toml).
+No Codex, o comando de inspecao e `/mcp`.
 
-Configuracao atual do projeto:
+Se voce quer Docker-only, use um `config.toml` com `docker run`.
+
+O arquivo versionado [../.codex/config.toml](../.codex/config.toml) continua apontando para o venv local. Se a sua preferencia e evitar isso, substitua pelo bloco abaixo.
+
+Configuracao Docker para projeto:
 
 ```toml
 [mcp_servers.mcp_crm]
-command = "./.venv/bin/python"
-args = ["-m", "mcp_crm.drivers.mcp_server"]
-cwd = "."
+command = "docker"
+args = ["run", "-i", "--rm", "-v", "mcp-crm-runtime:/app/data/runtime", "mcp-crm"]
 startup_timeout_sec = 20
 tool_timeout_sec = 60
-
-[mcp_servers.mcp_crm.env]
-PYTHONPATH = "src"
 ```
 
 Como validar no Codex:
 
-1. Abra o projeto no Codex CLI ou na extensao Codex.
-2. Rode `/mcp` na interface do Codex.
-3. Verifique se `mcp_crm` aparece entre os servidores ativos.
+1. Rode `docker build -t mcp-crm .`.
+2. Abra o projeto no Codex CLI ou na extensao Codex.
+3. Rode `/mcp`.
+4. Verifique se `mcp_crm` aparece entre os servidores ativos.
 
 Alternativa via CLI do Codex, sem editar arquivo manualmente:
 
 ```bash
-cd /home/Alex/Development/mcp-register
-codex mcp add mcp_crm --env PYTHONPATH=src -- ./.venv/bin/python -m mcp_crm.drivers.mcp_server
+codex mcp add mcp_crm -- docker run -i --rm -v mcp-crm-runtime:/app/data/runtime mcp-crm
 ```
 
-Para configurar globalmente no Codex, use `~/.codex/config.toml` com o mesmo bloco, mas trocando caminhos relativos por absolutos.
+Para explicitar `ask_crm` com `stub` no Codex, adicione `-e MCP_LLM_PROVIDER=stub` antes do nome da imagem.
 
-## Habilitando ask_crm
+## Provider do ask_crm
 
-Por padrao, as configuracoes prontas sobem apenas o servidor. A tool `ask_crm` exige um provider de LLM configurado.
+Por padrao, o servidor sobe com o provider local `stub`. Para trocar o provider no fluxo Docker, passe variaveis com `docker run -e`.
 
-Para habilitar localmente com stub no VS Code ou no Copilot, acrescente no bloco `env`:
-
-```json
-{
-  "MCP_LLM_PROVIDER": "stub"
-}
-```
-
-Exemplo completo no `mcp.json`:
+Exemplo no VS Code ou Copilot:
 
 ```json
 {
   "servers": {
     "mcp-crm": {
       "type": "stdio",
-      "command": "${workspaceFolder}/.venv/bin/python",
-      "args": ["-m", "mcp_crm.drivers.mcp_server"],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src",
-        "MCP_LLM_PROVIDER": "stub"
-      }
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "MCP_LLM_PROVIDER=stub",
+        "-v",
+        "mcp-crm-runtime:/app/data/runtime",
+        "mcp-crm"
+      ]
     }
   }
 }
@@ -154,21 +184,33 @@ Exemplo completo no `mcp.json`:
 Exemplo equivalente no Codex:
 
 ```toml
-[mcp_servers.mcp_crm.env]
-PYTHONPATH = "src"
-MCP_LLM_PROVIDER = "stub"
+[mcp_servers.mcp_crm]
+command = "docker"
+args = [
+  "run",
+  "-i",
+  "--rm",
+  "-e",
+  "MCP_LLM_PROVIDER=stub",
+  "-v",
+  "mcp-crm-runtime:/app/data/runtime",
+  "mcp-crm"
+]
+startup_timeout_sec = 20
+tool_timeout_sec = 60
 ```
 
-Para usar provider compativel com OpenAI, voce tambem precisa definir:
+Para usar provider compativel com OpenAI, troque ou acrescente:
 
-- `MCP_LLM_PROVIDER=openai-compatible`
-- `MCP_LLM_API_KEY`
-- `MCP_LLM_MODEL`
-- `MCP_LLM_BASE_URL`
+- `-e MCP_LLM_PROVIDER=openai-compatible`
+- `-e MCP_LLM_API_KEY=...`
+- `-e MCP_LLM_MODEL=...`
+- `-e MCP_LLM_BASE_URL=...`
 
 ## Troubleshooting rapido
 
-- `MCP: List Servers` nao mostra `mcp-crm`: verifique se o arquivo de configuracao foi salvo no lugar certo e se o servidor nao foi desabilitado.
-- servidor nao inicia: rode manualmente `./.venv/bin/python -m mcp_crm.drivers.mcp_server` na raiz do projeto.
-- `ask_crm` indisponivel: faltou configurar `MCP_LLM_PROVIDER`.
-- janela remota do VS Code: prefira `.vscode/mcp.json` ou configuracao remota para o processo rodar no host remoto.
+- no Copilot do VS Code, `/mcp` nao aparece mesmo; use `MCP: List Servers`
+- `MCP: List Servers` nao mostra `mcp-crm`: confira se o `mcp.json` salvo no VS Code esta usando o bloco Docker correto
+- o Codex nao mostra o servidor em `/mcp`: confira se o `config.toml` esta usando `docker run`
+- servidor nao inicia: rode manualmente `docker run --rm -i -v mcp-crm-runtime:/app/data/runtime mcp-crm`
+- alterou o codigo do servidor: refaca `docker build -t mcp-crm .`

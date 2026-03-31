@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 
 from mcp_crm.slices.users.application.ports import EmbeddingPort, UserRepositoryPort
@@ -18,17 +19,21 @@ class UserService:
     def __init__(self, repository: UserRepositoryPort, embedder: EmbeddingPort) -> None:
         self._repo = repository
         self._embedder = embedder
+        self._embed_query = lru_cache(maxsize=256)(embedder.embed)
 
     def create_user(self, *, name: str, email: str, description: str) -> int:
         """Validate inputs, generate embedding and persist the user."""
         self._require_text(name, "name")
         self._check_email(email)
         self._require_text(description, "description")
-        embedding = self._embedder.embed(description)
+        normalized_name = name.strip()
+        normalized_email = email.strip().lower()
+        normalized_description = description.strip()
+        embedding = self._embedder.embed(normalized_description)
         return self._repo.create_user(
-            name=name.strip(),
-            email=email.strip().lower(),
-            description=description.strip(),
+            name=normalized_name,
+            email=normalized_email,
+            description=normalized_description,
             embedding=embedding,
         )
 
@@ -68,7 +73,8 @@ class UserService:
         max_top_k = _CFG.search.max_top_k
         if top_k <= 0 or top_k > max_top_k:
             raise ValidationError(f"top_k must be between 1 and {max_top_k}")
-        embedding = self._embedder.embed(query)
+        candidate = query.strip()
+        embedding = self._embed_query(candidate)
         return [
             SearchUserResponse(
                 id=r.user.id,

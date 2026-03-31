@@ -30,7 +30,7 @@ logging:
   default_format: json
 
 llm:
-  provider: disabled
+  provider: stub
   model: gpt-4.1-mini
   base_url: https://api.openai.com/v1
   timeout_seconds: 30

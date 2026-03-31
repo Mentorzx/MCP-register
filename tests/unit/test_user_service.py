@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import pytest
 
+from mcp_crm.slices.users.application.user_service import UserService
 from mcp_crm.slices.users.domain.errors import (
     DuplicateEmailError,
     UserNotFoundError,
     ValidationError,
 )
 from mcp_crm.slices.users.infrastructure.config import get_project_config
-from tests.support import build_service
+from tests.support import build_repo, build_service
 
 _CFG = get_project_config()
 
@@ -125,3 +126,39 @@ class TestSearchUsers:
     def test_rejects_top_k_above_max(self, service):
         with pytest.raises(ValidationError):
             service.search_users(query="ok", top_k=_CFG.search.max_top_k + 1)
+
+    def test_reuses_cached_query_embedding_for_repeated_searches(self, tmp_path):
+        class CountingEmbedder:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def embed(self, text: str) -> list[float]:
+                self.calls.append(text)
+                return [1.0, 0.0]
+
+            def warm_up(self) -> list[float]:
+                return [1.0, 0.0]
+
+            def embed_many(
+                self,
+                texts: list[str],
+                *,
+                batch_size: int = 32,
+            ) -> list[list[float]]:
+                del batch_size
+                return [self.embed(text) for text in texts]
+
+        repo = build_repo(tmp_path, name="query-cache")
+        repo.create_user(
+            name="Ana",
+            email="ana@t.com",
+            description="investimentos renda fixa",
+            embedding=[1.0, 0.0],
+        )
+        embedder = CountingEmbedder()
+        service = UserService(repo, embedder)
+
+        service.search_users(query=" investimentos ", top_k=1)
+        service.search_users(query="investimentos", top_k=1)
+
+        assert embedder.calls == ["investimentos"]

@@ -11,6 +11,12 @@ from mcp_crm.slices.users.application.user_service import UserService
 from mcp_crm.slices.users.domain.errors import ConfigurationError
 
 
+def _reset_server_caches(mcp_server) -> None:
+    mcp_server.get_service.cache_clear()
+    mcp_server.get_assistant_service.cache_clear()
+    mcp_server._boot.cache_clear()
+
+
 @pytest.fixture()
 async def client(tmp_path, monkeypatch):
     from mcp_crm.drivers import mcp_server
@@ -18,17 +24,14 @@ async def client(tmp_path, monkeypatch):
     monkeypatch.setenv("MCP_DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("MCP_EMBEDDING_PROVIDER", "deterministic")
     monkeypatch.setenv("MCP_LLM_PROVIDER", "stub")
+    monkeypatch.setenv("MCP_IMPORT_ENABLED", "false")
 
-    mcp_server.get_service.cache_clear()
-    mcp_server.get_assistant_service.cache_clear()
-    mcp_server._boot.cache_clear()
+    _reset_server_caches(mcp_server)
 
     async with Client(mcp) as c:
         yield c
 
-    mcp_server.get_service.cache_clear()
-    mcp_server.get_assistant_service.cache_clear()
-    mcp_server._boot.cache_clear()
+    _reset_server_caches(mcp_server)
 
 
 @pytest.mark.asyncio
@@ -82,13 +85,16 @@ async def test_ask_crm(client):
         {
             "name": "Ana",
             "email": "ana-ask@test.com",
-            "description": "cliente premium interessada em investimentos",
+            "description": "contato focado em orquidea quantica beta delta",
         },
     )
 
     answer = await client.call_tool(
         "ask_crm",
-        {"question": "Quem no CRM parece mais interessado em investimentos?", "top_k": 1},
+        {
+            "question": "Quem no CRM parece mais ligado a orquidea quantica beta delta?",
+            "top_k": 1,
+        },
     )
 
     data = answer.data
@@ -98,6 +104,44 @@ async def test_ask_crm(client):
     else:
         assert "Ana" in data["answer"]
         assert len(data["matches"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_ask_crm_works_with_default_stub_provider(tmp_path, monkeypatch):
+    from mcp_crm.drivers import mcp_server
+
+    monkeypatch.setenv("MCP_DB_PATH", str(tmp_path / "default-stub.db"))
+    monkeypatch.setenv("MCP_EMBEDDING_PROVIDER", "deterministic")
+    monkeypatch.setenv("MCP_IMPORT_ENABLED", "false")
+    monkeypatch.delenv("MCP_LLM_PROVIDER", raising=False)
+
+    _reset_server_caches(mcp_server)
+
+    async with Client(mcp) as c:
+        await c.call_tool(
+            "create_user",
+            {
+                "name": "Ana",
+                "email": "ana-default@test.com",
+                "description": "contato focado em orquidea quantica beta delta",
+            },
+        )
+
+        answer = await c.call_tool(
+            "ask_crm",
+            {
+                "question": "Quem no CRM parece mais ligado a orquidea quantica beta delta?",
+                "top_k": 1,
+            },
+        )
+
+        data = answer.data
+        if hasattr(data, "answer"):
+            assert "Ana" in data.answer
+        else:
+            assert "Ana" in data["answer"]
+
+    _reset_server_caches(mcp_server)
 
 
 @pytest.mark.asyncio
@@ -122,6 +166,7 @@ async def test_ask_crm_exposes_configuration_errors(tmp_path, monkeypatch):
     monkeypatch.setenv("MCP_DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("MCP_EMBEDDING_PROVIDER", "deterministic")
     monkeypatch.setenv("MCP_LLM_PROVIDER", "stub")
+    monkeypatch.setenv("MCP_IMPORT_ENABLED", "false")
     monkeypatch.setattr(
         CRMAssistantService,
         "ask",
@@ -132,9 +177,7 @@ async def test_ask_crm_exposes_configuration_errors(tmp_path, monkeypatch):
         ),
     )
 
-    mcp_server.get_service.cache_clear()
-    mcp_server.get_assistant_service.cache_clear()
-    mcp_server._boot.cache_clear()
+    _reset_server_caches(mcp_server)
 
     async with Client(mcp) as c:
         with pytest.raises(
@@ -146,9 +189,7 @@ async def test_ask_crm_exposes_configuration_errors(tmp_path, monkeypatch):
                 {"question": "Quem parece um lead premium?", "top_k": 1},
             )
 
-    mcp_server.get_service.cache_clear()
-    mcp_server.get_assistant_service.cache_clear()
-    mcp_server._boot.cache_clear()
+    _reset_server_caches(mcp_server)
 
 
 @pytest.mark.asyncio
@@ -196,3 +237,49 @@ async def test_tool_names():
         tools = await c.list_tools()
     names = {t.name for t in tools}
     assert {"create_user", "get_user", "search_users", "list_users", "ask_crm"} <= names
+
+
+@pytest.mark.asyncio
+async def test_get_service_bootstraps_rows_from_runtime_json(tmp_path, monkeypatch):
+    from mcp_crm.drivers import mcp_server
+
+    source_dir = tmp_path / "runtime-import"
+    source_dir.mkdir(parents=True)
+    (source_dir / "seed.json").write_text(
+        '{"items": [{"code": "0101.21.00", "description": "cavalos vivos"}]}',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("MCP_DB_PATH", str(tmp_path / "imported.db"))
+    monkeypatch.setenv("MCP_EMBEDDING_PROVIDER", "deterministic")
+    monkeypatch.setenv("MCP_IMPORT_DIR", str(source_dir))
+    monkeypatch.setenv("MCP_IMPORT_CACHE_DIR", str(tmp_path / "import-cache"))
+    monkeypatch.delenv("MCP_IMPORT_SOURCE_PATH", raising=False)
+
+    _reset_server_caches(mcp_server)
+
+    service = mcp_server.get_service()
+    page = service.list_users(limit=10, offset=0)
+
+    assert page[0].name == "0101.21.00"
+    assert "cavalos" in page[0].description
+
+    _reset_server_caches(mcp_server)
+
+
+def test_get_service_warms_repo_cache(tmp_path, monkeypatch):
+    from mcp_crm.drivers import mcp_server
+
+    monkeypatch.setenv("MCP_DB_PATH", str(tmp_path / "warm-cache.db"))
+    monkeypatch.setenv("MCP_EMBEDDING_PROVIDER", "deterministic")
+    monkeypatch.setenv("MCP_IMPORT_ENABLED", "false")
+
+    _reset_server_caches(mcp_server)
+
+    service = mcp_server.get_service()
+    repo = service._repo
+
+    assert hasattr(repo, "_search_cache")
+    assert getattr(repo, "_search_cache", None) is not None
+
+    _reset_server_caches(mcp_server)

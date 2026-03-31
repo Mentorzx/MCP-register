@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]
 
+_RUNTIME_FALLBACK_DIR = Path(".tmp") / "runtime"
+
 
 # -- config dataclasses (1:1 with config.yaml sections) --------------------
 
@@ -81,6 +83,12 @@ class Settings:
     data_dir: Path
     db_path: Path
     sqlite_timeout_seconds: int
+    json_import_enabled: bool
+    json_import_dir: Path
+    json_import_cache_dir: Path
+    json_import_source_path: Path | None
+    json_import_batch_size: int
+    search_cache_enabled: bool
     embedding_model: str
     embedding_provider: str
     llm_provider: str
@@ -121,13 +129,38 @@ def get_settings() -> Settings:
     """Resolve runtime paths from config + env overrides."""
     cfg = get_project_config()
     root = _root_dir()
-    data = root / cfg.runtime.data_dir
-    data.mkdir(parents=True, exist_ok=True)
+    data = _resolve_runtime_dir(root, cfg.runtime.data_dir)
+    import_enabled_raw = os.getenv("MCP_IMPORT_ENABLED", "true").strip().lower()
+    cache_enabled_raw = os.getenv("MCP_SEARCH_CACHE_ENABLED", "true").strip().lower()
     return Settings(
         root_dir=root,
         data_dir=data,
-        db_path=Path(os.getenv("MCP_DB_PATH", data / cfg.runtime.db_filename)),
+        db_path=_resolve_env_path(
+            "MCP_DB_PATH",
+            _resolve_db_path(root, data, cfg.runtime.db_filename),
+            root=root,
+        ),
         sqlite_timeout_seconds=cfg.runtime.sqlite_timeout_seconds,
+        json_import_enabled=import_enabled_raw not in {"0", "false", "no", "off"},
+        json_import_dir=_resolve_env_path(
+            "MCP_IMPORT_DIR",
+            data / "import",
+            root=root,
+        ),
+        json_import_cache_dir=_resolve_env_path(
+            "MCP_IMPORT_CACHE_DIR",
+            data / "import-cache",
+            root=root,
+        ),
+        json_import_source_path=_resolve_optional_env_path(
+            "MCP_IMPORT_SOURCE_PATH",
+            root=root,
+        ),
+        json_import_batch_size=max(
+            1,
+            int(os.getenv("MCP_IMPORT_BATCH_SIZE", "256")),
+        ),
+        search_cache_enabled=cache_enabled_raw not in {"0", "false", "no", "off"},
         embedding_model=os.getenv("MCP_EMBEDDING_MODEL", cfg.embedding.model),
         embedding_provider=os.getenv("MCP_EMBEDDING_PROVIDER", cfg.embedding.provider),
         llm_provider=os.getenv("MCP_LLM_PROVIDER", cfg.llm.provider),
@@ -139,3 +172,57 @@ def get_settings() -> Settings:
         ),
         llm_system_prompt=os.getenv("MCP_LLM_SYSTEM_PROMPT", cfg.llm.system_prompt),
     )
+
+
+def _resolve_runtime_dir(root: Path, configured_relative: str) -> Path:
+    configured = root / configured_relative
+    try:
+        configured.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    if _is_writable_directory(configured):
+        return configured
+
+    fallback = root / _RUNTIME_FALLBACK_DIR
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+def _resolve_db_path(root: Path, runtime_dir: Path, db_filename: str) -> Path:
+    candidate = runtime_dir / db_filename
+    if _is_writable_path(candidate):
+        return candidate
+
+    fallback = root / _RUNTIME_FALLBACK_DIR
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback / db_filename
+
+
+def _resolve_env_path(env_name: str, default_path: Path, *, root: Path) -> Path:
+    raw = os.getenv(env_name)
+    if raw is None or not raw.strip():
+        return default_path
+    candidate = Path(raw.strip())
+    if candidate.is_absolute():
+        return candidate
+    return root / candidate
+
+
+def _resolve_optional_env_path(env_name: str, *, root: Path) -> Path | None:
+    raw = os.getenv(env_name)
+    if raw is None or not raw.strip():
+        return None
+    candidate = Path(raw.strip())
+    if candidate.is_absolute():
+        return candidate
+    return root / candidate
+
+
+def _is_writable_directory(path: Path) -> bool:
+    return path.is_dir() and os.access(path, os.W_OK | os.X_OK)
+
+
+def _is_writable_path(path: Path) -> bool:
+    if path.exists():
+        return os.access(path, os.W_OK)
+    return _is_writable_directory(path.parent)

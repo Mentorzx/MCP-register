@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 
 from fastmcp import FastMCP
@@ -23,6 +24,7 @@ from mcp_crm.slices.users.domain.user import (
 )
 from mcp_crm.slices.users.infrastructure.config import get_project_config, get_settings
 from mcp_crm.slices.users.infrastructure.embeddings import build_embedder
+from mcp_crm.slices.users.infrastructure.json_bootstrap import bootstrap_json_import
 from mcp_crm.slices.users.infrastructure.llm import build_llm_client
 from mcp_crm.slices.users.infrastructure.logging import configure_logging, get_logger
 from mcp_crm.slices.users.infrastructure.sqlite_repository import SQLiteUserRepository
@@ -49,7 +51,10 @@ def get_service() -> UserService:
     _boot()
     settings = get_settings()
     embedder = build_embedder(settings)
+    warm_vector = embedder.warm_up()
+    bootstrap_json_import(settings, embedder)
     repo = SQLiteUserRepository(settings.db_path)
+    repo.warm_up_search_cache(expected_dimensions=len(warm_vector))
     return UserService(repo, embedder)
 
 
@@ -182,14 +187,21 @@ def ask_crm(
 def main() -> None:
     try:
         _boot()
-        logger.info("starting mcp-crm", extra={"event": "mcp.startup"})
-        mcp.run(transport="stdio")
+        if _should_prewarm_on_startup():
+            get_service()
+        logger.debug("starting mcp-crm", extra={"event": "mcp.startup"})
+        mcp.run(transport="stdio", show_banner=False)
     except Exception:
         logger.exception(
             "Failed to start MCP CRM.",
             extra={"event": "mcp.startup_failed"},
         )
         raise
+
+
+def _should_prewarm_on_startup() -> bool:
+    raw = os.getenv("MCP_PREWARM_ON_STARTUP", "true").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
 
 
 if __name__ == "__main__":

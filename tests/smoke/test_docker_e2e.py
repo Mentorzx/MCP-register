@@ -56,6 +56,8 @@ def test_docker_image_exercises_all_tools(tmp_path: Path) -> None:
             "-e",
             "MCP_LLM_PROVIDER=stub",
             "-e",
+            "MCP_IMPORT_ENABLED=false",
+            "-e",
             "PYTHONPATH=/app/src",
             "-v",
             f"{repo_root}:/app",
