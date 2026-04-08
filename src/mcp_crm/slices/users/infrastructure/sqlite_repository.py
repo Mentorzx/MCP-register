@@ -204,7 +204,7 @@ def _decode_embedding(
     *,
     expected_dimensions: int,
     user_id: int,
-) -> np.ndarray:
+) -> np.ndarray | None:
     try:
         vector = np.frombuffer(blob, dtype=np.float32)
     except ValueError as exc:
@@ -212,9 +212,16 @@ def _decode_embedding(
             f"stored embedding for user {user_id} is corrupted"
         ) from exc
     if vector.size != expected_dimensions:
-        raise VectorStoreError(
-            f"stored embedding for user {user_id} has unexpected dimensions"
+        logger.warning(
+            "skipping stored embedding with unexpected dimensions",
+            extra={
+                "event": "users.search_skip_incompatible_embedding",
+                "user_id": user_id,
+                "expected_dimensions": expected_dimensions,
+                "actual_dimensions": int(vector.size),
+            },
         )
+        return None
     return vector
 
 
@@ -228,20 +235,34 @@ def _decode_search_rows(
     np.ndarray,
 ]:
     users: list[User] = []
-    user_ids = np.empty(len(rows), dtype=np.int64)
-    matrix = np.empty((len(rows), expected_dimensions), dtype=np.float32)
+    user_ids: list[int] = []
+    vectors: list[np.ndarray] = []
 
-    for index, row in enumerate(rows):
+    for row in rows:
         user = _row_to_user(row)
         vector = _decode_embedding(
             row[4],
             expected_dimensions=expected_dimensions,
             user_id=user.id,
         )
+        if vector is None:
+            continue
         users.append(user)
-        user_ids[index] = user.id
-        matrix[index] = vector
-    return (users, user_ids, matrix)
+        user_ids.append(user.id)
+        vectors.append(vector)
+
+    if not users:
+        return (
+            [],
+            np.empty(0, dtype=np.int64),
+            np.empty((0, expected_dimensions), dtype=np.float32),
+        )
+
+    return (
+        users,
+        np.asarray(user_ids, dtype=np.int64),
+        np.vstack(vectors).astype(np.float32, copy=False),
+    )
 
 
 def _select_top_indices(

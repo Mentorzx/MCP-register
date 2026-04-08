@@ -291,7 +291,7 @@ class TestSQLiteRepository:
         with pytest.raises(VectorStoreError, match="corrupted"):
             repo.search_users(embedder.embed("premium client"), top_k=1)
 
-    def test_search_raises_when_embedding_dimensions_do_not_match(
+    def test_search_skips_rows_when_embedding_dimensions_do_not_match(
         self,
         tmp_path,
         embedder,
@@ -304,6 +304,12 @@ class TestSQLiteRepository:
             description="premium client",
             embedding=embedder.embed("premium client"),
         )
+        repo.create_user(
+            name="Bia",
+            email="bia@t.com",
+            description="wealth management",
+            embedding=embedder.embed("wealth management"),
+        )
 
         bad_embedding = np.asarray([1.0, 2.0], dtype=np.float32).tobytes()
         with sqlite3.connect(db_path) as conn:
@@ -312,5 +318,6 @@ class TestSQLiteRepository:
                 (bad_embedding, "ana@t.com"),
             )
 
-        with pytest.raises(VectorStoreError, match="unexpected dimensions"):
-            repo.search_users(embedder.embed("premium client"), top_k=1)
+        hits = repo.search_users(embedder.embed("wealth management"), top_k=2)
+
+        assert [hit.user.name for hit in hits] == ["Bia"]

@@ -80,6 +80,14 @@ docker run --rm -it -v "$(pwd)/data/runtime:/app/data/runtime" mcp-crm bash
 
 `ask_crm` funciona por padrao com o provider local `stub`.
 
+O exemplo em [docs/client_example.py](docs/client_example.py) assume por padrao:
+
+- `MCP_EMBEDDING_PROVIDER=deterministic`
+- `MCP_LLM_PROVIDER=stub`
+
+Isso deixa o fluxo de demo reproduzivel sem download de modelo e sem dependencia externa.
+Se quiser testar outro provider, basta sobrescrever pelas variaveis de ambiente.
+
 ### Modo `stub`
 
 Usado para smoke tests e verificacao local sem dependencia externa:
@@ -172,7 +180,6 @@ Para rodar o exemplo pronto do repositorio:
 
 ```bash
 docker run --rm \
-  -e MCP_LLM_PROVIDER=stub \
   -v "$(pwd)/data/runtime:/app/data/runtime" \
   mcp-crm python docs/client_example.py
 ```

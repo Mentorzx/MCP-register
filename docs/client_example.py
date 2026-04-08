@@ -11,6 +11,7 @@ Uso:
 from __future__ import annotations
 
 import asyncio
+import os
 from uuid import uuid4
 
 from fastmcp import Client
@@ -19,6 +20,9 @@ from mcp_crm.drivers import mcp_server
 
 
 async def main() -> None:
+    os.environ.setdefault("MCP_EMBEDDING_PROVIDER", "deterministic")
+    os.environ.setdefault("MCP_LLM_PROVIDER", "stub")
+
     example_email = f"ana+{uuid4().hex[:8]}@example.com"
 
     async with Client(mcp_server.mcp) as c:
