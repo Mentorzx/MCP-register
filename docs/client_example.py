@@ -9,13 +9,15 @@ sobrescreva MCP_IMPORT_SOURCE_PATH.
 
 Uso:
     docker run --rm -it \
-            -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
+    --user "$(id -u):$(id -g)" \
+    -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
       -v "$(pwd)/data/runtime:/app/data/runtime" \
       mcp-crm python docs/client_example.py
 
     docker run --rm -it \
+    --user "$(id -u):$(id -g)" \
       -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
-            -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
+    -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
       -v /home/lira/Downloads:/downloads:ro \
       -v "$(pwd)/data/runtime:/app/data/runtime" \
       mcp-crm python docs/client_example.py

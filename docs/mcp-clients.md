@@ -38,6 +38,8 @@ docker run --rm \
 ```
 
 Esse comando exercita `create_user`, `get_user`, `search_users`, `list_users` e `ask_crm` sem usar o venv do host.
+Como ele usa um volume nomeado do Docker, nao escreve direto no checkout e nao sofre com arquivos `root-owned` no repositorio.
+Se voce trocar esse volume por um bind mount para `data/runtime` ou `.demo-runtime` no Linux, rode o container com `--user "$(id -u):$(id -g)"` no Bash ou `--user $"((^id -u | str trim)):((^id -g | str trim))"` no Nushell.
 
 ## GitHub Copilot no VS Code
 
@@ -92,6 +94,7 @@ Observacoes importantes:
 ## Demo com o NCM oficial no Copilot
 
 Se a ideia e demonstrar o MCP pelo proprio Chat do Copilot, use o runtime padrao do workspace para que o servidor e o Chat enxerguem a mesma base.
+Aqui o bootstrap roda no proprio checkout, entao os comandos de `docker run` com bind mount para `data/runtime` devem seguir o padrao documentado no README e no roteiro do video, com o `uid:gid` do host no Linux.
 
 ### Bash
 
@@ -244,4 +247,5 @@ Para usar provider compativel com OpenAI, troque ou acrescente:
 - `MCP: List Servers` nao mostra `mcp-crm`: confira se o `mcp.json` salvo no VS Code esta usando o bloco Docker correto
 - o Codex nao mostra o servidor em `/mcp`: confira se o `config.toml` esta usando `docker run`
 - servidor nao inicia: rode manualmente `docker run --rm -i -v mcp-crm-runtime:/app/data/runtime mcp-crm`
+- limpeza falha com `Permission denied` em `.demo-runtime` ou `data/runtime/import-cache`: um run antigo criou arquivos `root-owned`; repita os bind mounts com `--user` e, se precisar limpar uma vez, rode `docker run --rm --pull=missing --network none --mount type=bind,src="$(pwd)",dst=/repo busybox:1.36 sh -euxc 'rm -rf /repo/.demo-runtime'`
 - alterou o codigo do servidor: refaca `docker build -t mcp-crm .`

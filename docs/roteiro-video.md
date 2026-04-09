@@ -24,6 +24,7 @@ O objetivo aqui nao e mostrar arquitetura no vacuo. O objetivo e provar execucao
 ## Setup Antes de Gravar
 
 Use um runtime limpo para a parte Docker e limpe tambem o runtime padrao do workspace para a parte do Copilot.
+Nos `docker run` com bind mount para `.demo-runtime`, rode com o `uid:gid` do host para nao deixar arquivos root-owned no checkout.
 
 ### Bash
 
@@ -80,6 +81,7 @@ docker build -t mcp-crm:latest .
 
 ```bash
 docker run --rm \
+  --user "$(id -u):$(id -g)" \
   -e MCP_EMBEDDING_PROVIDER=sentence-transformers \
   -e MCP_LLM_PROVIDER=stub \
   -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
@@ -171,6 +173,7 @@ mkdir -p data/runtime/import
 cp /home/lira/Downloads/Tabela_NCM_Vigente_20260319.json data/runtime/import/
 
 docker run --rm \
+  --user "$(id -u):$(id -g)" \
   -e MCP_EMBEDDING_PROVIDER=sentence-transformers \
   -e MCP_LLM_PROVIDER=stub \
   -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
@@ -202,6 +205,7 @@ mkdir data/runtime/import
 cp /home/lira/Downloads/Tabela_NCM_Vigente_20260319.json data/runtime/import/
 
 docker run --rm \
+  --user $"((^id -u | str trim)):((^id -g | str trim))" \
   -e MCP_EMBEDDING_PROVIDER=sentence-transformers \
   -e MCP_LLM_PROVIDER=stub \
   -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
@@ -217,6 +221,44 @@ docker run --rm \
 
 ./.venv/bin/python -m pytest tests -q
 ./.venv/bin/python -m ruff check .
+```
+
+## Limpeza Depois da Demo
+
+### Bash
+
+```bash
+rm -rf .demo-runtime
+rm -f data/runtime/users.db data/runtime/users.faiss
+rm -rf data/runtime/import data/runtime/import-cache
+```
+
+Se um run antigo tiver deixado `.demo-runtime` como `root`, use este fallback uma vez:
+
+```bash
+docker run --rm \
+  --pull=missing \
+  --network none \
+  --mount type=bind,src="$(pwd)",dst=/repo \
+  busybox:1.36 sh -euxc 'rm -rf /repo/.demo-runtime'
+```
+
+### Nushell
+
+```nu
+rm -rf .demo-runtime
+rm -f data/runtime/users.db data/runtime/users.faiss
+rm -rf data/runtime/import data/runtime/import-cache
+```
+
+Se um run antigo tiver deixado `.demo-runtime` como `root`, use este fallback uma vez:
+
+```nu
+docker run --rm \
+  --pull=missing \
+  --network none \
+  --mount type=bind,src=$"(pwd)",dst=/repo \
+  busybox:1.36 sh -euxc 'rm -rf /repo/.demo-runtime'
 ```
 
 ## Observacoes Finais

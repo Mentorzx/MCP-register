@@ -63,7 +63,8 @@ docker build -t mcp-crm .
 Execucao base:
 
 ```bash
-docker run --rm -v "$(pwd)/data/runtime:/app/data/runtime" mcp-crm
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v "$(pwd)/data/runtime:/app/data/runtime" mcp-crm
 ```
 
 ```nu
@@ -73,8 +74,11 @@ docker run --rm -v $"(pwd)/data/runtime:/app/data/runtime" mcp-crm
 Shell interativo:
 
 ```bash
-docker run --rm -it -v "$(pwd)/data/runtime:/app/data/runtime" mcp-crm bash
+docker run --rm -it --user "$(id -u):$(id -g)" \
+  -v "$(pwd)/data/runtime:/app/data/runtime" mcp-crm bash
 ```
+
+Em bind mounts para `data/runtime` no Linux, prefira rodar o container com o `uid:gid` do host para nao deixar arquivos root-owned no checkout.
 
 ## Configuracao de LLM
 
@@ -96,6 +100,7 @@ Usado para smoke tests e verificacao local sem dependencia externa:
 
 ```bash
 docker run --rm \
+  --user "$(id -u):$(id -g)" \
   -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
   -v "$(pwd)/data/runtime:/app/data/runtime" \
   mcp-crm python docs/client_example.py
@@ -107,6 +112,7 @@ Para rodar o mesmo exemplo com o arquivo oficial baixado localmente:
 
 ```bash
 docker run --rm \
+  --user "$(id -u):$(id -g)" \
   -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
   -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
   -v /home/lira/Downloads:/downloads:ro \
@@ -120,6 +126,7 @@ Para testar com um endpoint compativel com a API de chat completions:
 
 ```bash
 docker run --rm \
+  --user "$(id -u):$(id -g)" \
   -e MCP_LLM_PROVIDER=openai-compatible \
   -e MCP_LLM_API_KEY="$MCP_LLM_API_KEY" \
   -e MCP_LLM_MODEL="gpt-4.1-mini" \
@@ -207,6 +214,7 @@ Para rodar o exemplo pronto do repositorio:
 
 ```bash
 docker run --rm \
+  --user "$(id -u):$(id -g)" \
   -v "$(pwd)/data/runtime:/app/data/runtime" \
   mcp-crm python docs/client_example.py
 ```
