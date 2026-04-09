@@ -18,7 +18,14 @@ from mcp_crm.slices.users.infrastructure.logging import get_logger
 logger = get_logger(__name__)
 
 _SUPPORTED_SUFFIXES = {".json", ".jsonl", ".ndjson"}
-_COLLECTION_KEYS = ("users", "items", "records", "results", "data")
+_COLLECTION_KEYS = (
+    "users",
+    "items",
+    "records",
+    "results",
+    "data",
+    "nomenclaturas",
+)
 _NAME_CANDIDATES = (
     "name",
     "nome",

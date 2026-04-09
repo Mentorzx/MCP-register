@@ -82,11 +82,13 @@ docker run --rm -it -v "$(pwd)/data/runtime:/app/data/runtime" mcp-crm bash
 
 O exemplo em [docs/client_example.py](docs/client_example.py) assume por padrao:
 
-- `MCP_EMBEDDING_PROVIDER=deterministic`
+- `MCP_EMBEDDING_PROVIDER=sentence-transformers`
+- `MCP_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2`
 - `MCP_LLM_PROVIDER=stub`
+- `MCP_IMPORT_SOURCE_PATH=docs/ncm_demo.json` quando o bootstrap de importacao esta ligado e nenhum caminho foi informado
 
-Isso deixa o fluxo de demo reproduzivel sem download de modelo e sem dependencia externa.
-Se quiser testar outro provider, basta sobrescrever pelas variaveis de ambiente.
+Esse e o caminho oficial do projeto. Na primeira execucao, o provider pode baixar o modelo localmente.
+Se quiser um caminho mais rapido para smoke ou testes automatizados, sobrescreva para `deterministic` via variavel de ambiente.
 
 ### Modo `stub`
 
@@ -94,6 +96,20 @@ Usado para smoke tests e verificacao local sem dependencia externa:
 
 ```bash
 docker run --rm \
+  -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
+  -v "$(pwd)/data/runtime:/app/data/runtime" \
+  mcp-crm python docs/client_example.py
+```
+
+Se o modelo oficial ainda nao estiver no cache local, a primeira execucao pode baixar arquivos do Hugging Face. Para demo ao vivo, monte `~/.cache/huggingface` no container e faca um warm-up local antes.
+
+Para rodar o mesmo exemplo com o arquivo oficial baixado localmente:
+
+```bash
+docker run --rm \
+  -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
+  -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
+  -v /home/lira/Downloads:/downloads:ro \
   -v "$(pwd)/data/runtime:/app/data/runtime" \
   mcp-crm python docs/client_example.py
 ```
@@ -124,15 +140,17 @@ Variaveis relevantes:
 ## Exemplos de uso
 
 O fluxo completo das tools esta em [docs/client_example.py](docs/client_example.py).
+Na base atual, o exemplo bootstrapa uma amostra NCM, lista os primeiros registros, localiza o alvo `0101.21.00`, reutiliza a descricao importada desse item em `search_users`, consulta o registro via `get_user`, usa `ask_crm` sobre a base importada e fecha com um `create_user` para provar o caminho de escrita.
 
 ### Uso via Python
 
-Exemplo em processo chamando `create_user`, `get_user`, `search_users`, `list_users` e `ask_crm`:
+Exemplo em processo chamando `list_users`, `search_users`, `get_user`, `ask_crm` e `create_user` sobre a base NCM bootstrapada:
 
 ```python
 from __future__ import annotations
 
 import asyncio
+import os
 
 from fastmcp import Client
 
@@ -140,37 +158,46 @@ from mcp_crm.drivers import mcp_server
 
 
 async def main() -> None:
-    async with Client(mcp_server.mcp) as client:
-        created = await client.call_tool(
-            "create_user",
-            {
-                "name": "Ana Silva",
-                "email": "ana@example.com",
-                "description": "Cliente premium interessada em investimentos.",
-            },
-        )
-        print("create_user ->", created.data)
+  os.environ.setdefault("MCP_EMBEDDING_PROVIDER", "sentence-transformers")
+  os.environ.setdefault(
+    "MCP_EMBEDDING_MODEL",
+    "sentence-transformers/all-MiniLM-L6-v2",
+  )
+  os.environ.setdefault("MCP_LLM_PROVIDER", "stub")
+  os.environ.setdefault("MCP_IMPORT_SOURCE_PATH", "docs/ncm_demo.json")
 
-        found = await client.call_tool("get_user", {"user_id": created.data})
-        print("get_user ->", found.data)
+  async with Client(mcp_server.mcp) as client:
+    page = await client.call_tool("list_users", {"limit": 25, "offset": 0})
+    target = next(item for item in page.data if item.name == "0101.21.00")
 
-        results = await client.call_tool(
-            "search_users",
-            {"query": "cliente premium com foco em investimentos", "top_k": 2},
-        )
-        print("search_users ->", results.data)
+    results = await client.call_tool(
+      "search_users",
+      {"query": target.description, "top_k": 5},
+    )
+    found = await client.call_tool("get_user", {"user_id": results.data[0].id})
 
-        page = await client.call_tool("list_users", {"limit": 10, "offset": 0})
-        print("list_users ->", page.data)
+    answer = await client.call_tool(
+      "ask_crm",
+      {
+        "question": "O que o NCM 0101.21.00 representa na base importada?",
+        "top_k": 3,
+      },
+    )
 
-        answer = await client.call_tool(
-            "ask_crm",
-            {
-                "question": "Quem no CRM parece mais interessado em investimentos?",
-                "top_k": 1,
-            },
-        )
-        print("ask_crm ->", answer.data)
+    created = await client.call_tool(
+      "create_user",
+      {
+        "name": "Monitoramento NCM 0101.21.00",
+        "email": "ncm-monitor@example.com",
+        "description": "Cadastro auxiliar para acompanhar o codigo 0101.21.00.",
+      },
+    )
+
+    print("list_users ->", page.data)
+    print("search_users ->", results.data)
+    print("get_user ->", found.data)
+    print("ask_crm ->", answer.data)
+    print("create_user ->", created.data)
 
 
 asyncio.run(main())
@@ -198,6 +225,8 @@ No Copilot Chat do VS Code, o comando `/mcp` nao aparece.
 No Codex, a configuracao de projeto passa a valer neste checkout e o servidor aparece em `/mcp`.
 
 Observacao: `ask_crm` ja funciona por padrao com `stub`; configure `openai-compatible` se quiser respostas via API externa.
+
+Para provar o fluxo do proprio Copilot com o servidor MCP do workspace, prepare `data/runtime/import` com o JSON oficial do NCM, rode `Developer: Reload Window`, confirme `mcp-crm` em `MCP: List Servers` e entao faca uma pergunta no Chat como: `Considere a descricao exata '0101.21.00 | -- Reprodutores de raca pura'. Quais sao os registros mais relevantes na base importada?`.
 
 Guia detalhado de acoplamento:
 

@@ -89,6 +89,37 @@ Observacoes importantes:
 - em janela remota, o `docker` executa onde a configuracao foi definida
 - se voce alterar o codigo do servidor, refaca `docker build -t mcp-crm .`
 
+## Demo com o NCM oficial no Copilot
+
+Se a ideia e demonstrar o MCP pelo proprio Chat do Copilot, use o runtime padrao do workspace para que o servidor e o Chat enxerguem a mesma base.
+
+### Bash
+
+```bash
+rm -f data/runtime/users.db data/runtime/users.faiss
+rm -rf data/runtime/import data/runtime/import-cache
+mkdir -p data/runtime/import
+cp /home/lira/Downloads/Tabela_NCM_Vigente_20260319.json data/runtime/import/
+```
+
+### Nushell
+
+```nu
+rm -f data/runtime/users.db data/runtime/users.faiss
+rm -rf data/runtime/import data/runtime/import-cache
+mkdir data/runtime/import
+cp /home/lira/Downloads/Tabela_NCM_Vigente_20260319.json data/runtime/import/
+```
+
+Depois disso:
+
+1. Rode `Developer: Reload Window` para reiniciar o servidor MCP do workspace sem reaproveitar cache antigo.
+2. Rode `MCP: List Servers` e confirme que `mcp-crm` esta carregado.
+3. No Chat do Copilot, peca algo como: `Considere a descricao exata '0101.21.00 | -- Reprodutores de raca pura'. Quais sao os registros mais relevantes na base importada?`.
+4. Se quiser uma segunda pergunta, siga com: `Agora resuma o que esse resultado indica sobre o NCM 0101.21.00 dentro da base importada.`
+
+Esse fluxo usa o provider oficial `sentence-transformers` porque o workspace ja sobe o MCP com esse provider em [../.vscode/mcp.json](../.vscode/mcp.json).
+
 ## VS Code fora deste repositório
 
 Se quiser acoplar este mesmo servidor a partir do seu perfil do VS Code, sem depender do checkout atual:

@@ -9,7 +9,9 @@
       ],
       "cwd": "${workspaceFolder}",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "MCP_EMBEDDING_PROVIDER": "sentence-transformers",
+        "MCP_LLM_PROVIDER": "stub"
       }
     }
   }

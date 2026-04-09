@@ -8,8 +8,12 @@ from pathlib import Path
 import numpy as np
 
 from mcp_crm.slices.users.infrastructure.config import Settings
-from mcp_crm.slices.users.infrastructure.embeddings import DeterministicTestEmbedder
-from mcp_crm.slices.users.infrastructure.json_bootstrap import bootstrap_json_import
+from mcp_crm.slices.users.infrastructure.embeddings import (
+    DeterministicTestEmbedder,
+)
+from mcp_crm.slices.users.infrastructure.json_bootstrap import (
+    bootstrap_json_import,
+)
 
 
 def _build_settings(tmp_path: Path) -> Settings:
@@ -46,7 +50,9 @@ def test_bootstrap_json_import_builds_parquet_and_sqlite(tmp_path):
                 "items": [
                     {
                         "code": "0101.21.00",
-                        "details": {"description": "cavalos reprodutores de raca pura vivos"},
+                        "details": {
+                            "description": ("cavalos reprodutores de raca pura vivos")
+                        },
                     },
                     {
                         "codigo": "0901.11",
@@ -66,13 +72,37 @@ def test_bootstrap_json_import_builds_parquet_and_sqlite(tmp_path):
 
     with sqlite3.connect(settings.db_path) as conn:
         rows = conn.execute(
-            "SELECT name, email, description, embedding FROM users ORDER BY id ASC"
+            ("SELECT name, email, description, embedding " "FROM users ORDER BY id ASC")
         ).fetchall()
 
     assert [row[0] for row in rows] == ["0101.21.00", "0901.11"]
     assert rows[0][1].endswith("@import.local")
     assert "cavalos" in rows[0][2]
     assert np.frombuffer(rows[0][3], dtype=np.float32).shape == (8,)
+
+
+def test_bootstrap_json_import_supports_official_ncm_export_shape(tmp_path):
+    settings = _build_settings(tmp_path)
+    settings.json_import_dir.mkdir(parents=True)
+    demo_source = Path(__file__).resolve().parents[2] / "docs" / "ncm_demo.json"
+    source_path = settings.json_import_dir / "Tabela_NCM_Vigente_20260319.json"
+    source_path.write_text(
+        demo_source.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    bootstrap_json_import(settings, DeterministicTestEmbedder(dimensions=8))
+
+    with sqlite3.connect(settings.db_path) as conn:
+        rows = conn.execute(
+            "SELECT name, email, description FROM users ORDER BY id ASC"
+        ).fetchall()
+
+    assert len(rows) == 8
+    assert rows[0][0] == "01"
+    assert rows[0][1] == "01-1@import.local"
+    assert any(name == "0101.21.00" for name, _, _ in rows)
+    assert any("raca pura" in description.lower() for _, _, description in rows)
 
 
 def test_bootstrap_json_import_restores_db_from_parquet_without_reembedding(tmp_path):

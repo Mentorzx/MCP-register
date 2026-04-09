@@ -145,7 +145,11 @@ class SQLiteUserRepository(UserRepositoryPort):
             return
 
         row = embedding.reshape(1, -1)
-        matrix = row.copy() if cache.matrix.size == 0 else np.concatenate((cache.matrix, row), axis=0)
+        matrix = (
+            row.copy()
+            if cache.matrix.size == 0
+            else np.concatenate((cache.matrix, row), axis=0)
+        )
         self._search_cache = _SearchCache(
             users=[*cache.users, user],
             user_ids=np.append(cache.user_ids, user.id),

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from fastmcp import Client
@@ -263,6 +265,41 @@ async def test_get_service_bootstraps_rows_from_runtime_json(tmp_path, monkeypat
 
     assert page[0].name == "0101.21.00"
     assert "cavalos" in page[0].description
+
+    _reset_server_caches(mcp_server)
+
+
+def test_search_returns_exact_ncm_match_for_exact_description(
+    tmp_path,
+    monkeypatch,
+):
+    from mcp_crm.drivers import mcp_server
+
+    source_dir = tmp_path / "runtime-import"
+    source_dir.mkdir(parents=True)
+    demo_source = Path(__file__).resolve().parents[2] / "docs" / "ncm_demo.json"
+    (source_dir / "Tabela_NCM_Vigente_20260319.json").write_text(
+        demo_source.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("MCP_DB_PATH", str(tmp_path / "imported.db"))
+    monkeypatch.setenv("MCP_EMBEDDING_PROVIDER", "deterministic")
+    monkeypatch.setenv("MCP_LLM_PROVIDER", "stub")
+    monkeypatch.setenv("MCP_IMPORT_ENABLED", "true")
+    monkeypatch.setenv("MCP_IMPORT_DIR", str(source_dir))
+    monkeypatch.setenv("MCP_IMPORT_CACHE_DIR", str(tmp_path / "import-cache"))
+    monkeypatch.delenv("MCP_IMPORT_SOURCE_PATH", raising=False)
+
+    _reset_server_caches(mcp_server)
+
+    service = mcp_server.get_service()
+    preview = service.list_users(limit=25, offset=0)
+    target = next(item for item in preview if item.name == "0101.21.00")
+
+    results = service.search_users(query=target.description, top_k=5)
+
+    assert results[0].name == "0101.21.00"
 
     _reset_server_caches(mcp_server)
 
