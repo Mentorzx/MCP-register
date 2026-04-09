@@ -7,20 +7,25 @@ e o extrato versionado em docs/ncm_demo.json.
 Se quiser apontar para o arquivo oficial baixado,
 sobrescreva MCP_IMPORT_SOURCE_PATH.
 
-Uso:
-    docker run --rm -it \
-    --user "$(id -u):$(id -g)" \
-    -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
-      -v "$(pwd)/data/runtime:/app/data/runtime" \
-      mcp-crm python docs/client_example.py
+Se voce usar bind mount para data/runtime,
+garanta antes que esse diretorio exista no host.
 
-    docker run --rm -it \
-    --user "$(id -u):$(id -g)" \
-      -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
-    -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
-      -v /home/lira/Downloads:/downloads:ro \
-      -v "$(pwd)/data/runtime:/app/data/runtime" \
-      mcp-crm python docs/client_example.py
+Uso:
+        docker run --rm -it \
+            --user "$(id -u):$(id -g)" \
+            -e HF_HOME=/tmp/huggingface \
+            -v "$HOME/.cache/huggingface:/tmp/huggingface" \
+            -v "$(pwd)/data/runtime:/app/data/runtime" \
+            mcp-crm python docs/client_example.py
+
+        docker run --rm -it \
+            --user "$(id -u):$(id -g)" \
+            -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
+            -e HF_HOME=/tmp/huggingface \
+            -v "$HOME/.cache/huggingface:/tmp/huggingface" \
+            -v /home/lira/Downloads:/downloads:ro \
+            -v "$(pwd)/data/runtime:/app/data/runtime" \
+            mcp-crm python docs/client_example.py
 """
 
 from __future__ import annotations

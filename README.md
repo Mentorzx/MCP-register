@@ -101,7 +101,8 @@ Usado para smoke tests e verificacao local sem dependencia externa:
 ```bash
 docker run --rm \
   --user "$(id -u):$(id -g)" \
-  -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
+  -e HF_HOME=/tmp/huggingface \
+  -v "$HOME/.cache/huggingface:/tmp/huggingface" \
   -v "$(pwd)/data/runtime:/app/data/runtime" \
   mcp-crm python docs/client_example.py
 ```
@@ -114,7 +115,8 @@ Para rodar o mesmo exemplo com o arquivo oficial baixado localmente:
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
-  -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
+  -e HF_HOME=/tmp/huggingface \
+  -v "$HOME/.cache/huggingface:/tmp/huggingface" \
   -v /home/lira/Downloads:/downloads:ro \
   -v "$(pwd)/data/runtime:/app/data/runtime" \
   mcp-crm python docs/client_example.py
@@ -127,10 +129,12 @@ Para testar com um endpoint compativel com a API de chat completions:
 ```bash
 docker run --rm \
   --user "$(id -u):$(id -g)" \
+  -e HF_HOME=/tmp/huggingface \
   -e MCP_LLM_PROVIDER=openai-compatible \
   -e MCP_LLM_API_KEY="$MCP_LLM_API_KEY" \
   -e MCP_LLM_MODEL="gpt-4.1-mini" \
   -e MCP_LLM_BASE_URL="https://api.openai.com/v1" \
+  -v "$HOME/.cache/huggingface:/tmp/huggingface" \
   -v "$(pwd)/data/runtime:/app/data/runtime" \
   mcp-crm python docs/client_example.py
 ```
@@ -215,6 +219,8 @@ Para rodar o exemplo pronto do repositorio:
 ```bash
 docker run --rm \
   --user "$(id -u):$(id -g)" \
+  -e HF_HOME=/tmp/huggingface \
+  -v "$HOME/.cache/huggingface:/tmp/huggingface" \
   -v "$(pwd)/data/runtime:/app/data/runtime" \
   mcp-crm python docs/client_example.py
 ```

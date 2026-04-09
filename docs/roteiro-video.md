@@ -85,7 +85,8 @@ docker run --rm \
   -e MCP_EMBEDDING_PROVIDER=sentence-transformers \
   -e MCP_LLM_PROVIDER=stub \
   -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
-  -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
+  -e HF_HOME=/tmp/huggingface \
+  -v "$HOME/.cache/huggingface:/tmp/huggingface" \
   -v /home/lira/Downloads:/downloads:ro \
   -v "$(pwd)/.demo-runtime:/app/data/runtime" \
   mcp-crm:latest python docs/client_example.py
@@ -177,7 +178,8 @@ docker run --rm \
   -e MCP_EMBEDDING_PROVIDER=sentence-transformers \
   -e MCP_LLM_PROVIDER=stub \
   -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
-  -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
+  -e HF_HOME=/tmp/huggingface \
+  -v "$HOME/.cache/huggingface:/tmp/huggingface" \
   -v /home/lira/Downloads:/downloads:ro \
   -v "$(pwd)/.demo-runtime:/app/data/runtime" \
   mcp-crm:latest python docs/client_example.py
@@ -209,7 +211,8 @@ docker run --rm \
   -e MCP_EMBEDDING_PROVIDER=sentence-transformers \
   -e MCP_LLM_PROVIDER=stub \
   -e MCP_IMPORT_SOURCE_PATH=/downloads/Tabela_NCM_Vigente_20260319.json \
-  -v /home/lira/.cache/huggingface:/root/.cache/huggingface \
+  -e HF_HOME=/tmp/huggingface \
+  -v /home/lira/.cache/huggingface:/tmp/huggingface \
   -v /home/lira/Downloads:/downloads:ro \
   -v $"(pwd)/.demo-runtime:/app/data/runtime" \
   mcp-crm:latest python docs/client_example.py

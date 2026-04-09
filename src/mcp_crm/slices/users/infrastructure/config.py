@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import os
+import tempfile
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -176,16 +178,16 @@ def get_settings() -> Settings:
 
 def _resolve_runtime_dir(root: Path, configured_relative: str) -> Path:
     configured = root / configured_relative
-    try:
-        configured.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
-    if _is_writable_directory(configured):
+    if _ensure_writable_directory(configured):
         return configured
 
-    fallback = root / _RUNTIME_FALLBACK_DIR
-    fallback.mkdir(parents=True, exist_ok=True)
-    return fallback
+    for fallback in _runtime_fallback_candidates(root):
+        if _ensure_writable_directory(fallback):
+            return fallback
+
+    raise PermissionError(
+        "no writable runtime directory available for MCP runtime data"
+    )
 
 
 def _resolve_db_path(root: Path, runtime_dir: Path, db_filename: str) -> Path:
@@ -193,9 +195,15 @@ def _resolve_db_path(root: Path, runtime_dir: Path, db_filename: str) -> Path:
     if _is_writable_path(candidate):
         return candidate
 
-    fallback = root / _RUNTIME_FALLBACK_DIR
-    fallback.mkdir(parents=True, exist_ok=True)
-    return fallback / db_filename
+    for fallback in _runtime_fallback_candidates(root):
+        if not _ensure_writable_directory(fallback):
+            continue
+
+        fallback_candidate = fallback / db_filename
+        if _is_writable_path(fallback_candidate):
+            return fallback_candidate
+
+    raise PermissionError("no writable path available for the SQLite database")
 
 
 def _resolve_env_path(env_name: str, default_path: Path, *, root: Path) -> Path:
@@ -226,3 +234,22 @@ def _is_writable_path(path: Path) -> bool:
     if path.exists():
         return os.access(path, os.W_OK)
     return _is_writable_directory(path.parent)
+
+
+def _ensure_writable_directory(path: Path) -> bool:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return False
+    return _is_writable_directory(path)
+
+
+def _runtime_fallback_candidates(root: Path) -> tuple[Path, ...]:
+    digest = hashlib.sha1(str(root).encode("utf-8")).hexdigest()[:12]
+    system_tmp = (
+        Path(tempfile.gettempdir())
+        / "mcp-crm-runtime"
+        / f"{root.name}-{digest}"
+        / "runtime"
+    )
+    return (root / _RUNTIME_FALLBACK_DIR, system_tmp)

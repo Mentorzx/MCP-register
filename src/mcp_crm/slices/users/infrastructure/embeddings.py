@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import math
+import os
+import tempfile
+from pathlib import Path
 
 import numpy as np
 
@@ -50,6 +53,7 @@ class SentenceTransformerEmbedder(EmbeddingPort):
 
     def _ensure_model(self):
         if self._model is None:
+            _prepare_sentence_transformers_runtime()
             from sentence_transformers import SentenceTransformer
 
             self._model = SentenceTransformer(self._model_name)
@@ -92,3 +96,83 @@ def build_embedder(settings: Settings) -> EmbeddingPort:
     raise ConfigurationError(
         f"unsupported MCP_EMBEDDING_PROVIDER: {settings.embedding_provider}"
     )
+
+
+def _prepare_sentence_transformers_runtime() -> None:
+    cache_dir = _resolve_writable_cache_dir(
+        "TORCHINDUCTOR_CACHE_DIR",
+        _default_torchinductor_cache_dir(),
+    )
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = str(cache_dir)
+
+    huggingface_home = _resolve_writable_cache_dir(
+        "HF_HOME",
+        _default_huggingface_cache_dir(),
+    )
+    os.environ["HF_HOME"] = str(huggingface_home)
+
+    huggingface_hub_cache = _resolve_writable_cache_dir(
+        "HF_HUB_CACHE",
+        huggingface_home / "hub",
+    )
+    os.environ["HF_HUB_CACHE"] = str(huggingface_hub_cache)
+    os.environ["TRANSFORMERS_CACHE"] = str(
+        _resolve_writable_cache_dir(
+            "TRANSFORMERS_CACHE",
+            huggingface_hub_cache,
+        )
+    )
+
+    if not os.getenv("HOME"):
+        os.environ["HOME"] = tempfile.gettempdir()
+
+    if _current_uid_has_passwd_entry():
+        return
+
+    fallback_user = f"uid-{os.getuid()}"
+    os.environ.setdefault("USER", fallback_user)
+    os.environ.setdefault("LOGNAME", fallback_user)
+
+
+def _default_torchinductor_cache_dir() -> Path:
+    return (
+        Path(tempfile.gettempdir()) / "mcp-crm" / "torchinductor" / f"uid-{os.getuid()}"
+    )
+
+
+def _default_huggingface_cache_dir() -> Path:
+    return (
+        Path(tempfile.gettempdir()) / "mcp-crm" / "huggingface" / f"uid-{os.getuid()}"
+    )
+
+
+def _current_uid_has_passwd_entry() -> bool:
+    try:
+        import pwd
+    except ImportError:
+        return True
+
+    try:
+        pwd.getpwuid(os.getuid())
+    except KeyError:
+        return False
+    return True
+
+
+def _resolve_writable_cache_dir(env_name: str, default_path: Path) -> Path:
+    raw = os.getenv(env_name)
+    if raw and raw.strip():
+        candidate = Path(raw.strip())
+        if _ensure_directory(candidate):
+            return candidate
+    if _ensure_directory(default_path):
+        return default_path
+    raise PermissionError(f"no writable cache directory available for {env_name}")
+
+
+def _ensure_directory(path: Path) -> bool:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return False
+    return path.is_dir() and os.access(path, os.W_OK | os.X_OK)
