@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "target_count": 100,
+  "exported_count": 100,
+  "current_snapshot": {
+    "version": "1523-20260730-59361",
+    "snapshot_name": "runes-of-aldur",
+    "filtered_total": 13907
+  },
+  "snapshots_used": [
+    "1523-20260730-59361"
+  ],
+  "search_columns": [
+    "account",
+    "class",
+    "ehp",
+    "energyshield",
+    "keypassives",
+    "level",
+    "life",
+    "name",
+    "skills"
+  ],
+  "failures": [],
+  "files": {
+    "annotated": "artifacts/poe/pob_codes_sorted_by_dps.txt",
+    "codes_only": "artifacts/poe/pob_codes_only_sorted_by_dps.txt"
+  }
+}
