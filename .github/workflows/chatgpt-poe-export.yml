@@ -1,5 +1,6 @@
 name: ChatGPT PoE build export
 
+# Triggered after workflow creation so GitHub actually schedules the branch run.
 on:
   push:
     branches:
